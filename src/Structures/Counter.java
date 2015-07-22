@@ -1,4 +1,7 @@
-package com.robustMRMW;
+package Structures;
+
+
+import com.robustMRMW.Node;
 
 /**
  * Created by Matteo on 19/06/2015.
@@ -36,7 +39,8 @@ public class Counter {
 
     //encodes counter to string using Node.SEPARATOR parameter
     public String counterToString(Counter c){
-       return String.valueOf(id) + Node.SEPARATOR + String.valueOf(counter);
+
+        return String.valueOf(id) + Node.SEPARATOR + String.valueOf(counter);
     }
 
     //decodes counter from string

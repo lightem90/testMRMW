@@ -1,5 +1,9 @@
 package com.robustMRMW;
 
+import Structures.Message;
+import Structures.Tag;
+import Structures.View;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -197,7 +201,8 @@ public class UserInputProcess {
         readBuffer.clear();
         // handling correctly received message
         Message msg = new Message();
-        msg.fromString(rcvStr);
+        //TODO: fix
+        //msg.fromString(rcvStr);
         return msg;
 
     }

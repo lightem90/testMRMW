@@ -5,7 +5,7 @@ package electMasterService;
  */
 
 import com.robustMRMW.Node;
-import com.robustMRMW.View;
+import Structures.View;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -20,6 +20,7 @@ public class electMasterService {
     private ArrayList<Node> seemCrd;
 
     private boolean noCrd = false;
+    private boolean imCrd = false;
 
 
     public electMasterService(int networkNodes, ArrayList<Integer> nodeFailureDetector, ArrayList<Node> repliesArray ){
@@ -28,7 +29,7 @@ public class electMasterService {
         failureDetector = nodeFailureDetector;
         rep = repliesArray;
 
-        quorum = numberOfNodes/2+1;
+        quorum = numberOfNodes/2;
 
     }
 
@@ -43,17 +44,28 @@ public class electMasterService {
             masterId = sortedSeemCrd.get(0).getId();
         }
 
-        //send proposed and wait for answer
+        /*should be implemented in node code
+        if (masterId == getId()) imCrd = true;
 
 
+        */
 
     }
 
     //TODO: broadcast new elected correct master
     public void electMaster(){
 
+        // if I'm the master send proposed view with new counter and wait for ack, if I'm not wait for message and send ack
+        if(imCrd) {
 
+            //inc counter
+            //send message
 
+        } else {
+
+            //wait for message
+
+        }
 
 
     }
@@ -111,6 +123,7 @@ public class electMasterService {
                 if (!o1.isMaster() && o2.isMaster()) {
                     return 1;
                 }
+                //return negative value if id2 is bigger than id1
                 return o1.getId()- o2.getId();
 
             }

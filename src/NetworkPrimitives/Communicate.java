@@ -1,4 +1,9 @@
-package com.robustMRMW;
+package NetworkPrimitives;
+
+import Structures.Message;
+import Structures.Tag;
+import Structures.View;
+import com.robustMRMW.Node;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -11,7 +16,7 @@ public class Communicate {
 	Tag lastTag;
 	Node n;
 
-	Communicate(Node n) {
+	public Communicate(Node n) {
 		this.n = n;
 	}
 

@@ -1,5 +1,10 @@
 package com.robustMRMW;
 
+import NetworkPrimitives.Communicate;
+import Structures.Message;
+import Structures.Tag;
+import Structures.View;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -17,17 +22,8 @@ import java.util.*;
 
 public class Node {
 
-
-    //Class static parameters
-
-    public static String SEPARATOR = ",";
-    public static String ARRAY_SEPARATOR = "?";
-    public static String COUNTER_SEPARATOR = ":";
-
-
     // Class constants
     private static int LIST_SIZE = 10;
-    private static int COUNTER_FAILURE_DETECTOR = 100;
 
     // Class variables
     private int id;
@@ -111,7 +107,7 @@ public class Node {
             selector = socketSelector;
 
             // initialize communicate manager
-            comm = new Communicate(this);
+            comm = new NetworkPrimitives.Communicate(this);
 
             // writing local address to file
             Path filePath = Paths.get(ADDRESS_PATH);
@@ -269,7 +265,8 @@ public class Node {
             String[] tokens = message.split("&");
 
             for(String msg : tokens) {
-                receivedMessage.fromString(msg);
+                //TODO: fix
+                //receivedMessage.fromString(msg);
 
 
                 //FD increment
@@ -376,9 +373,7 @@ public class Node {
         writeBuffer.flip();
 
         while (writeBuffer.hasRemaining())
-            s.write(writeBuffer); // writing
-        // messsage to
-        // server
+            s.write(writeBuffer); // writing messsage to server
         writeBuffer.clear();
 
     }
@@ -552,7 +547,6 @@ public class Node {
         return messageList;
     }
 
-    // not really needed
     public void setMessageList(LinkedList<Message> messageList) {
         this.messageList = messageList;
     }
@@ -561,7 +555,6 @@ public class Node {
         return serverChannels;
     }
 
-    // not really needed
     public void setServerChannels(ArrayList<SocketChannel> serverChannels) {
         this.serverChannels = serverChannels;
     }
@@ -621,7 +614,6 @@ public class Node {
     public void setCounter(ArrayList<Integer> counter) {
         this.counter = counter;
     }
-
 
     public View getProposedView() {
         return proposedView;
