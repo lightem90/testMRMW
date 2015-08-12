@@ -46,8 +46,8 @@ public class Tag implements Comparable<Tag>{
 	@Override
 	public int compareTo(Tag anotherTag) {
 		if(this.label == anotherTag.getLabel())
-			return Integer.compare(this.id,anotherTag.getId());
-		return Integer.compare(this.label,anotherTag.getLabel());
+			return Integer.compare(id,anotherTag.getId());
+		return Integer.compare(label,anotherTag.getLabel());
 	}
 	@Override
 	public int hashCode() {

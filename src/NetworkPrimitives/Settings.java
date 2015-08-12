@@ -5,7 +5,7 @@ package NetworkPrimitives;
  */
 public class Settings {
 
-    //Class used to attach command line parameters to a node so they can easily retrieved (address, port, all kind of data we would need)
+    //Class used to attach command line parameters to a node so they can easily retrieved (address, port, all kind of data we will need)
 
 
     String address;

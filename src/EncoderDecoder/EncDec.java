@@ -1,6 +1,9 @@
 package EncoderDecoder;
 
+import Structures.Counter;
 import Structures.Message;
+import Structures.Tag;
+import Structures.View;
 
 /**
  * Created by Matteo on 22/07/2015.
@@ -9,28 +12,73 @@ public class EncDec {
 
 
 
-    public static String SEPARATOR = ",";
-    public static String ARRAY_SEPARATOR = "?";
-    public static String COUNTER_SEPARATOR = ":";
+    private final static String SEPARATOR = ",";
+	private final static String TAG_SEPARATOR = ":";
+
+	private final static int INVALID = -1;
 
 
 
+	//TODO: checks
     public Message decode(String stringToDecode){
 
+		Message ret = new Message();
+		String reqT = String.valueOf(INVALID);
+		View tmpV = new View(String.valueOf(INVALID));
+		Tag tmpT = new Tag(INVALID,INVALID);
+		int tmpS = INVALID;
 
 
 
-        return new Message();
+		String[] tokens = stringToDecode.split(SEPARATOR);
+		if (tokens.length == 4){
+
+			reqT = tokens[0];
+			tmpV.setValue(tokens[1]);
+			tmpS = Integer.parseInt(tokens[3]);
+			String tag_tokens[] = tokens[2].split(TAG_SEPARATOR);
+			if (tag_tokens.length == 4){
+				tmpT.setId(Integer.parseInt(tag_tokens[0]));
+				tmpT.setLabel(Integer.parseInt(tag_tokens[1]));
+				Counter tmp = new Counter(Integer.parseInt(tag_tokens[2]), Integer.parseInt(tag_tokens[3]));
+				tmpT.getCounters().add(tmp);
+
+			}
+
+
+		}
+
+		ret.setRequestType(reqT);
+		ret.setSenderId(tmpS);
+		ret.setView(tmpV);
+
+        return ret;
     }
+
 
 
     public String enccode (Message msgToEncode){
 
 
+		String reqT = msgToEncode.getRequestType();
+		View tmpV = msgToEncode.getView();
+		Tag tmpT = msgToEncode.getTag();
+		int tmpS = msgToEncode.getSenderId();
+
+		StringBuilder sb = new StringBuilder();
+
+		sb.append(reqT);
+		sb.append(SEPARATOR);
+		sb.append(tmpV.getValue());
+		sb.append(SEPARATOR);
+		sb.append(tmpT.getId() + TAG_SEPARATOR + tmpT.getLabel() + TAG_SEPARATOR + tmpT.getCounters().get(0).getId() + TAG_SEPARATOR + tmpT.getCounters().get(0).getCounter());
+		sb.append(SEPARATOR);
+		sb.append(tmpS);
+		sb.append("&");
 
 
 
-        return new String ();
+        return sb.toString();
     }
 
 
@@ -113,6 +161,24 @@ public class EncDec {
 
 
 	}
+
+	    //encodes counter to string using Node.SEPARATOR parameter
+    public String counterToString(Counter c){
+
+        return String.valueOf(id) + Node.SEPARATOR + String.valueOf(counter);
+    }
+
+    //decodes counter from string
+    public void counterFromString(String s){
+
+        String tokens[] = s.split(Node.SEPARATOR);
+
+        if (tokens.length == 2) {
+            this.id = Integer.parseInt(tokens[0]);
+            this.counter = Long.parseLong(tokens[1]);
+            }
+        else System.out.print("Cannot get counter from string");
+    }
 
 
     */
