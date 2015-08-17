@@ -1,22 +1,24 @@
 package NetworkPrimitives;
 
+import Structures.View;
+
 /**
  * Created by Matteo on 22/07/2015.
  */
 public class Settings {
 
     //Class used to attach command line parameters to a node so they can easily retrieved (address, port, all kind of data we will need)
+    //We may want to add other variables used both by Connection Manager and Communicate to make work easier
 
 
-    String address;
-    int port;
-    int nodeId;
+    private int port;
+    private int nodeId;
 
-    public Settings(String add, int p, int n){
+    public Settings(int p, int n){
 
-        address = add;
         port = p;
         nodeId = n;
+
     }
 
 
@@ -30,15 +32,6 @@ public class Settings {
     public void setPort(int port) {
         this.port = port;
     }
-
-    public String getAddress() {
-        return address;
-    }
-
-    public void setAddress(String address) {
-        this.address = address;
-    }
-
 
     public int getNodeId() {
         return nodeId;

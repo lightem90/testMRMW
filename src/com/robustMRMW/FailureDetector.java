@@ -18,7 +18,6 @@ public class FailureDetector {
     private int[] offlineNodes;
     private int nNodes;
 
-
     /* Constructor: supposed nodes array containing the network nodes id in growing number from index 1 to n number of nodes */
     // We can do this because we simplify the id to 1 -> n
     // We identify an invalid position with -1 (if for example node 1 (position 0 is offline, the value at index 0 of activeNodes must be -1
@@ -40,7 +39,7 @@ public class FailureDetector {
     }
 
     /* reset counter of node with id n to zero updating all the other ones */
-    private void updateFDForNode(int n){
+    public void updateFDForNode(int n){
 
         //if it was present in the offlineNodes I should invalidate his position
         if (offlineNodes[n] > 0) offlineNodes[n]=EMPTY;
@@ -66,7 +65,7 @@ public class FailureDetector {
     }
 
 
-    public ArrayList<Integer> calculateActiveNodes(){
+    public int calculateActiveNodes(){
 
         ArrayList<Integer> ret = new ArrayList<Integer>(nNodes);
 
@@ -88,7 +87,7 @@ public class FailureDetector {
         }
 
         //return the arrayList of valid nodes ids
-        return ret;
+        return ret.size();
 
     }
 

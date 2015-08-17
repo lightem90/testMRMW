@@ -57,7 +57,7 @@ public class EncDec {
 
 
 
-    public String enccode (Message msgToEncode){
+    public String encode (Message msgToEncode){
 
 
 		String reqT = msgToEncode.getRequestType();

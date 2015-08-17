@@ -10,7 +10,8 @@ import Structures.View;
 import java.util.ArrayList;
 import java.util.Comparator;
 
-
+//as stated in the paper, probably we have to implement other messages to implement the election procedure (acknowledge of missing master for example)
+//moreover we should keep for each server the last message from it into a list, in this way we can retrieve its id and view, OR asking from it again with more messages
 public class electMasterService {
 
     private int quorum;
@@ -30,6 +31,23 @@ public class electMasterService {
         rep = repliesArray;
 
         quorum = numberOfNodes/2;
+
+    }
+
+    public void findPossibleMasters(){
+
+        seemCrd = new ArrayList<Node>();
+
+        for (Node n : rep){
+
+            View nodeView = n.getLocalView();
+
+
+            if ((n.getCm().getFD().calculateActiveNodes() > quorum) &&  nodeView.getIdArray().size() > quorum && isContained(n))
+                seemCrd.add(n);
+        }
+
+        if (seemCrd.isEmpty() || seemCrd == null) noCrd = true;
 
     }
 
@@ -70,22 +88,7 @@ public class electMasterService {
 
     }
 
-    public void findPossibleMasters(){
 
-        seemCrd = new ArrayList<Node>();
-
-        for (Node n : rep){
-
-            View nodeView = n.getLocalView();
-
-
-            if ((n.getCounter().size() > quorum) &&  nodeView.getIdArray().size() > quorum && isContained(n))
-                seemCrd.add(n);
-        }
-
-        if (seemCrd.isEmpty() || seemCrd == null) noCrd = true;
-
-    }
 
     private boolean isContained (Node l){
 
