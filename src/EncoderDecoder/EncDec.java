@@ -5,6 +5,9 @@ import Structures.Message;
 import Structures.Tag;
 import Structures.View;
 
+import java.util.ArrayList;
+import java.util.LinkedList;
+
 /**
  * Created by Matteo on 22/07/2015.
  */
@@ -66,8 +69,11 @@ public class EncDec {
 		View tmpV = msgToEncode.getView();
 		Tag tmpT = msgToEncode.getTag();
 		//insert invalid counter if tag is empty (will be removed in decoding phase
-		if (tmpT.getCounters().size() == 0)
-			tmpT.getCounters().add(new Counter(-1,-1));
+		if (tmpT.getCounters() == null || tmpT.getCounters().size() == 0) {
+			LinkedList<Counter> tmp = new LinkedList<Counter>();
+			tmp.add(new Counter(-1, -1));
+			tmpT.setCounters(tmp);
+		}
 
 
 		int tmpS = msgToEncode.getSenderId();

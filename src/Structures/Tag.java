@@ -17,6 +17,8 @@ public class Tag implements Comparable<Tag>{
 		this.id = id;
 		this.label = label;
 		this.counters = new LinkedList<Counter>();
+		//initializing with un-valid counter to avoid null pointer exc.
+		counters.add(new Counter(-1,-1));
 
 
 	}

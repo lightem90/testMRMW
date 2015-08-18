@@ -69,6 +69,9 @@ public class ConnectionManager {
         ED = new EncDec();
         n = c;
 
+        //initializing rep with first tag and current view (only me active)
+        rep.put(new Tag(c.getMySett().getNodeId(),0),new View(String.valueOf(c.getMySett().getNodeId())));
+
 
     }
 
@@ -160,7 +163,8 @@ public class ConnectionManager {
 
 
         //initializing failure detector (now that I know the number of nodes)
-        FD = new FailureDetector(serverCount);
+
+        //FD = new FailureDetector(serverCount);
 
         //initializing communicate
         comm = new Communicate(n,this);
