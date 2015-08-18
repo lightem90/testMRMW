@@ -41,7 +41,9 @@ public class EncDec {
 				tmpT.setId(Integer.parseInt(tag_tokens[0]));
 				tmpT.setLabel(Integer.parseInt(tag_tokens[1]));
 				Counter tmp = new Counter(Integer.parseInt(tag_tokens[2]), Integer.parseInt(tag_tokens[3]));
-				tmpT.getCounters().add(tmp);
+				//not adding counter if is the invalid one
+				if (!(tmp.getCounter() == -1) && !(tmp.getId() == -1))
+					tmpT.getCounters().add(tmp);
 
 			}
 
@@ -63,6 +65,11 @@ public class EncDec {
 		String reqT = msgToEncode.getRequestType();
 		View tmpV = msgToEncode.getView();
 		Tag tmpT = msgToEncode.getTag();
+		//insert invalid counter if tag is empty (will be removed in decoding phase
+		if (tmpT.getCounters().size() == 0)
+			tmpT.getCounters().add(new Counter(-1,-1));
+
+
 		int tmpS = msgToEncode.getSenderId();
 
 		StringBuilder sb = new StringBuilder();

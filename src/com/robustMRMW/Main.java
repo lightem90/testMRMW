@@ -11,17 +11,28 @@ public class Main {
         boolean flag = true;
         while(flag){
 
-            if (args.length != 2){
+            if (args.length != 3){
 
-                System.out.println("Usage: program -id -port");
+                System.out.println("Usage: program -type -id -port");
                 flag = false;
 
             } else {
 
-                NetworkPrimitives.Settings init = new Settings(Integer.parseInt(args[0]), Integer.parseInt(args[1]));
-                Node n = new Node(init);
-                n.setup();
-                n.run();
+                if (Integer.parseInt(args[0]) == 1) {
+
+                    System.out.println("Starting server");
+                    NetworkPrimitives.Settings init = new Settings(Integer.parseInt(args[1]), Integer.parseInt(args[2]));
+                    Node n = new Node(init);
+                    n.setup();
+                    n.run();
+                } else {
+
+                    System.out.println("Starting reader / writer");
+                    UserInputProcess ui = new UserInputProcess();
+                    ui.run();
+
+
+                }
 
             }
         }

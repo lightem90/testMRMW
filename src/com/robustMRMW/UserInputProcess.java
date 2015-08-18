@@ -1,15 +1,18 @@
 package com.robustMRMW;
 
+import EncoderDecoder.EncDec;
 import Structures.Message;
 import Structures.Tag;
 import Structures.View;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
@@ -41,6 +44,8 @@ public class UserInputProcess {
             System.out.println(String
                     .format("Commands:%n -connect address port%n -exit"));
 
+            System.out.println("Remember: connecting will delete address file!");
+
             // getting user command
             command = scanner.nextLine();
 
@@ -60,6 +65,9 @@ public class UserInputProcess {
                 case "connect":
                     System.out.println("Connecting to: " + cmdList.get(1) + " at "
                             + cmdList.get(2));
+
+                    File f = new File("address.txt");
+                    f.delete();
 
                     // initializing connection with inputed values (no checks)
                     SocketAddress serverAddress = new InetSocketAddress(address,
@@ -171,8 +179,11 @@ public class UserInputProcess {
 
     private void sendMessage(SocketChannel s, Message m) throws IOException {
 
+        EncDec ed = new EncDec();
+        String toSend = ed.encode(m);
+
         writeBuffer.clear();
-        writeBuffer.put(m.toString().getBytes()); // filling buffer with message
+        writeBuffer.put(toSend.getBytes()); // filling buffer with message
         writeBuffer.flip();                         //always flip to set properly position and limit
 
 
@@ -182,6 +193,7 @@ public class UserInputProcess {
 
     private Message receiveMessage(SocketChannel s) throws IOException {
 
+        EncDec ed = new EncDec();
         String rcvStr = "";
         int count;
         readBuffer.clear();
@@ -200,9 +212,7 @@ public class UserInputProcess {
 
         readBuffer.clear();
         // handling correctly received message
-        Message msg = new Message();
-        //TODO: fix
-        //msg.fromString(rcvStr);
+        Message msg = ed.decode(rcvStr);
         return msg;
 
     }

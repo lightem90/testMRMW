@@ -30,6 +30,10 @@ public class Communicate {
 	EncDec ED;
 	ConnectionManager caller;
 
+	public enum Status {
+		NOTACK, NOTSENT, ACK
+	}
+
 	public Communicate(Node currNode, ConnectionManager cm) {
 
 		//initializing all position to true
@@ -47,10 +51,6 @@ public class Communicate {
 		caller = cm;
 
 
-	}
-
-	public enum Status {
-		NOTACK, NOTSENT, ACK
 	}
 
 	/*
@@ -112,8 +112,7 @@ public class Communicate {
 	// TODO: if I remove a channel at line 121, it happens that I may request the same index at line 144 and 188 causing an array out of bound exception I have no idea how to fix it
 	private Message[] waitForQuorum(Message request) {
 
-
-		Message reply = new Message();
+		Message reply;
 
 		Message[] values = new Message[serverCount];
 		ArrayList<Status> status = new ArrayList<>(serverCount);
@@ -125,8 +124,9 @@ public class Communicate {
 			status.add(Status.NOTSENT);
 		}
 
+		String toSend = ED.encode(request);
 		writeBuffer.clear();
-		writeBuffer.put(request.toString().getBytes());
+		writeBuffer.put(toSend.getBytes());
 
 		// if it is my turn, send the message to server i, but i should send to everyone right? (old version is commented)
 
@@ -220,8 +220,10 @@ public class Communicate {
 					}
 
 
+					/* I update FD only on the "receiver" side when I answer back
 					int sendID = reply.getSenderId();
 					caller.getFD().updateFDForNode(sendID);
+					*/
 
 
 
@@ -256,7 +258,6 @@ public class Communicate {
 				}
 			}
 
-		//TODO: why do we do this?
 		//setTurns(turns);
 		return values;
 

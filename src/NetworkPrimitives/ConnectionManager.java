@@ -90,6 +90,9 @@ public class ConnectionManager {
 
             serverChannel.socket().bind(hostAddress);
 
+            // in this way I retrieve and store the address and the local port
+            hostAddress = serverChannel.getLocalAddress();
+
             serverChannel.register(socketSelector, SelectionKey.OP_ACCEPT);
             selector = socketSelector;
 
@@ -107,6 +110,10 @@ public class ConnectionManager {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        System.out.println("Press enter when all server wrote the address");
+        Scanner s = new Scanner(System.in);
+        s.nextLine();
 
         System.out.println("Reading addresses from file " + ADDRESS_PATH);
 
@@ -165,6 +172,8 @@ public class ConnectionManager {
     public void run() {
 
         System.out.println("Waiting for connections...");
+
+        messageList = new LinkedList<Message>();
 
         while (true) {
             try {
@@ -234,7 +243,8 @@ public class ConnectionManager {
 
                 //FD increment
                 int sendID = receivedMessage.getSenderId();
-                FD.updateFDForNode(sendID);
+                //TODO: commented for now, we have to decide how to handle ids
+                //FD.updateFDForNode(sendID);
 
                 System.out.println("Received query '"
                         + receivedMessage.getRequestType() + "' from node #"
@@ -328,8 +338,7 @@ public class ConnectionManager {
         // read (otherwise the key.isReadable check won't work)
         socketChannel.register(selector, SelectionKey.OP_READ);
 
-        System.out.println("Client" + socketChannel.getRemoteAddress()
-                + " is connected");
+        System.out.println("Client listening on local port: " + socketChannel.getLocalAddress());
     }
 
     // if a read request arises from selector

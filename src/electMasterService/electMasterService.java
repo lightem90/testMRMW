@@ -58,17 +58,16 @@ public class electMasterService {
         findPossibleMasters();
 
         if (!noCrd) {
-            ArrayList<Node> sortedSeemCrd = sortNodeById(seemCrd);
-            masterId = sortedSeemCrd.get(0).getId();
+            //ArrayList<Node> sortedSeemCrd = sortNodeById(seemCrd);
+            //masterId = sortedSeemCrd.get(0).getId();
         }
 
         /*should be implemented in node code
-        if (masterId == getId()) imCrd = true;
-
-
-        */
+        if (masterId == getId()) imCrd = true;*/
 
     }
+
+
 
     //TODO: broadcast new elected correct master
     public void electMaster(){
@@ -105,15 +104,14 @@ public class electMasterService {
             }
 
         if (count == currentPropView.size) return failureDetector.contains(id);
-        else return false;
-
-        */
+        else return false;*/
 
 
         return true;
     }
 
 
+    /*
     private ArrayList<Node> sortNodeById(ArrayList<Node> list){
 
         ArrayList<Node> sortedNodes = (ArrayList)list.clone();
@@ -134,5 +132,7 @@ public class electMasterService {
         return sortedNodes;
 
     }
+    */
+
 
 }

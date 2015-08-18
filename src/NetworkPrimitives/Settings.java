@@ -14,7 +14,7 @@ public class Settings {
     private int port;
     private int nodeId;
 
-    public Settings(int p, int n){
+    public Settings(int n, int p){
 
         port = p;
         nodeId = n;
