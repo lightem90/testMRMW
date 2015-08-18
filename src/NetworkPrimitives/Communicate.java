@@ -36,6 +36,9 @@ public class Communicate {
 
 	public Communicate(Node currNode, ConnectionManager cm) {
 
+		serverCount = cm.getServerCount();
+		chan = cm.getServerChannels();
+
 		//initializing all position to true
 		turns = new ArrayList<>(serverCount);
 		for (int i = 0; i < serverCount; i++) {
@@ -43,8 +46,6 @@ public class Communicate {
 			turns.add(true);
 
 		}
-		serverCount = cm.getServerCount();
-		chan = cm.getServerChannels();
 
 		n = currNode;
 		ED = new EncDec();
@@ -207,8 +208,8 @@ public class Communicate {
 
 						if (message.equals(""))
 							continue;
-
-						reply = ED.decode(message);
+						String[] tokens = message.split("&");
+						reply = ED.decode(tokens[0]);
 					} catch (IOException e) {
 						System.out
 								.println("Channel doesn't exist anymore, removing it");

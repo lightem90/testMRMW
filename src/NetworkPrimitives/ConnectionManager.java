@@ -39,9 +39,6 @@ public class ConnectionManager {
     private ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
     private ByteBuffer writeBuffer = ByteBuffer.allocate(BUFFER_SIZE);
 
-    //TODO: this class should implement all the methods for setting up the connection with the other server and should implement the server select routine
-
-
     // Class connection variables
     private int serverCount = 0;
     private SocketAddress hostAddress;
@@ -69,6 +66,7 @@ public class ConnectionManager {
         ED = new EncDec();
         n = c;
 
+        //TODO adesso rep è inizializzato con il mio id e basta. Al primo finalize in caso di read non viene raggiunto il quorum perchè in parseInput() in caso rep non contenga il tag richiesto non rispondiamo
         //initializing rep with first tag and current view (only me active)
         rep.put(new Tag(c.getMySett().getNodeId(),0),new View(String.valueOf(c.getMySett().getNodeId())));
 
@@ -114,7 +112,7 @@ public class ConnectionManager {
             e.printStackTrace();
         }
 
-        System.out.println("Press enter when all server wrote the address");
+        System.out.println("Press enter when all servers wrote the address");
         Scanner s = new Scanner(System.in);
         s.nextLine();
 
@@ -242,6 +240,7 @@ public class ConnectionManager {
 
             for(String msg : tokens) {
 
+                //TODO decode uses "," and ":" as separators, if the received string (view) contains "," this breaks the decoding process.
                 receivedMessage = ED.decode(msg);
                 addMessage(receivedMessage);
 
@@ -294,6 +293,7 @@ public class ConnectionManager {
                         break;
                     case "userReadRequest":
                         read();
+                        //TODO bisogna reinserire tag.toString() altrimenti sta roba non funziona
                         System.out.println("Replying to request with result: "
                                 + n.getLocalTag().toString() + " " + n.getLocalView().toString());
                         sendMessage(channel,
@@ -404,7 +404,7 @@ public class ConnectionManager {
     private void sendMessage(SocketChannel s, Message m) throws IOException {
 
         writeBuffer.clear();
-        writeBuffer.put(m.toString().getBytes()); // filling
+        writeBuffer.put(ED.encode(m).getBytes()); // filling
         // buffer
         // with
         // message

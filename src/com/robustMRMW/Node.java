@@ -85,7 +85,7 @@ public class Node {
 
 
     public View getLocalView() {
-        return localView;
+        return (localView==null ? new View("") : localView);
     }
 
     public void setLocalView(View localView) {
@@ -93,7 +93,7 @@ public class Node {
     }
 
     public Tag getLocalTag() {
-        return localTag;
+        return (localTag==null ? new Tag(-1,-1) : localTag);
     }
 
     public void setLocalTag(Tag localTag) {

@@ -56,7 +56,7 @@ public class EncDec {
 		ret.setRequestType(reqT);
 		ret.setSenderId(tmpS);
 		ret.setView(tmpV);
-
+		ret.setTag(tmpT);
         return ret;
     }
 
