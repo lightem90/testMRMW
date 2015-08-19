@@ -66,7 +66,7 @@ public class ConnectionManager {
         ED = new EncDec();
         n = c;
 
-        //TODO adesso rep è inizializzato con il mio id e basta. Al primo finalize in caso di read non viene raggiunto il quorum perchè in parseInput() in caso rep non contenga il tag richiesto non rispondiamo
+        //TODO adesso rep ï¿½ inizializzato con il mio id e basta. Al primo finalize in caso di read non viene raggiunto il quorum perchï¿½ in parseInput() in caso rep non contenga il tag richiesto non rispondiamo
         //initializing rep with first tag and current view (only me active)
         rep.put(new Tag(c.getMySett().getNodeId(),0),new View(String.valueOf(c.getMySett().getNodeId())));
 
@@ -165,7 +165,7 @@ public class ConnectionManager {
         //FD = new FailureDetector(serverCount);
 
         //initializing communicate
-        comm = new Communicate(n,this);
+        comm = new NetworkPrimitives.Communicate(n,this);
 
     }
 

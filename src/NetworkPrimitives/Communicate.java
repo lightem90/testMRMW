@@ -180,7 +180,7 @@ public class Communicate {
 					removeCrashedServer(i, chan);
 					status.remove(i);
 					i--;
-					serverCount--;
+					serverCount = caller.getServerCount();
 					continue;
 				}
 
@@ -216,7 +216,7 @@ public class Communicate {
 						removeCrashedServer(i, chan);
 						status.remove(i);
 						i--;
-						serverCount--;
+						serverCount = caller.getServerCount();
 						continue;
 					}
 
@@ -244,7 +244,7 @@ public class Communicate {
 									.println("Channel doesn't exist anymore, removing it");
 							removeCrashedServer(i, chan);
 							status.remove(i);
-							serverCount--;
+							serverCount = caller.getServerCount();
 							i--;
 							continue;
 						}

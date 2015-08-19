@@ -11,6 +11,7 @@ public class View {
 	}
 	private String value;
 	private Status status ;
+
 	//this is te content of the value string (a list of id's) in this way we can compare it faster maybe instead of just the string
 	private ArrayList<Integer> idArray;
 

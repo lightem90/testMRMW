@@ -17,6 +17,7 @@ public class EncDec {
 
     private final static String SEPARATOR = ",";
 	private final static String TAG_SEPARATOR = ":";
+	private final static String END_STRING = "&";
 
 	private final static int INVALID = -1;
 
@@ -38,7 +39,7 @@ public class EncDec {
 
 			reqT = tokens[0];
 			tmpV.setValue(tokens[1]);
-			tmpS = Integer.parseInt(tokens[3]);
+			tmpS = Integer.parseInt(tokens[3].replace(END_STRING,""));
 			String tag_tokens[] = tokens[2].split(TAG_SEPARATOR);
 			if (tag_tokens.length == 4){
 				tmpT.setId(Integer.parseInt(tag_tokens[0]));
@@ -87,7 +88,7 @@ public class EncDec {
 		sb.append(tmpT.getId() + TAG_SEPARATOR + tmpT.getLabel() + TAG_SEPARATOR + tmpT.getCounters().get(0).getId() + TAG_SEPARATOR + tmpT.getCounters().get(0).getCounter());
 		sb.append(SEPARATOR);
 		sb.append(tmpS);
-		sb.append("&");
+		sb.append(END_STRING);
 
 
 
