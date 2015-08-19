@@ -66,7 +66,6 @@ public class ConnectionManager {
         ED = new EncDec();
         n = c;
 
-        //TODO adesso rep � inizializzato con il mio id e basta. Al primo finalize in caso di read non viene raggiunto il quorum perch� in parseInput() in caso rep non contenga il tag richiesto non rispondiamo
         //initializing rep with first tag and current view (only me active)
         rep.put(new Tag(c.getMySett().getNodeId(),0),new View(String.valueOf(c.getMySett().getNodeId())));
 
@@ -240,7 +239,6 @@ public class ConnectionManager {
 
             for(String msg : tokens) {
 
-                //TODO decode uses "," and ":" as separators, if the received string (view) contains "," this breaks the decoding process.
                 receivedMessage = ED.decode(msg);
                 addMessage(receivedMessage);
 
@@ -293,9 +291,6 @@ public class ConnectionManager {
                         break;
                     case "userReadRequest":
                         read();
-                        //TODO bisogna reinserire tag.toString() altrimenti sta roba non funziona
-                        System.out.println("Replying to request with result: "
-                                + n.getLocalTag().toString() + " " + n.getLocalView().toString());
                         sendMessage(channel,
                                 new Message("success", n.getLocalTag(),
                                         n.getLocalView(), n.getMySett().getNodeId()));

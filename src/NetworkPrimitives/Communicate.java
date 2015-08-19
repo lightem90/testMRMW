@@ -109,8 +109,6 @@ public class Communicate {
 
 		return !(waitForQuorum(request) == null);
 	}
-
-	// TODO: if I remove a channel at line 121, it happens that I may request the same index at line 144 and 188 causing an array out of bound exception I have no idea how to fix it
 	private Message[] waitForQuorum(Message request) {
 
 		Message reply;
@@ -128,40 +126,6 @@ public class Communicate {
 		String toSend = ED.encode(request);
 		writeBuffer.clear();
 		writeBuffer.put(toSend.getBytes());
-
-		// if it is my turn, send the message to server i, but i should send to everyone right? (old version is commented)
-
-//OLD VERSION
-/*			for (int i = 0; i < serverCount; i++) {
-
-				if (turns.get(i)) {
-					try {
-						System.out.println("Sending '"
-								+ request.getRequestType()
-								+ "' query to server");
-
-						writeBuffer.flip();
-						while (writeBuffer.hasRemaining())
-							chan.get(i).write(writeBuffer);
-
-					} catch (IOException e) {
-						System.out
-								.println("Channel doesn't exist anymore, removing it");
-						n.removeCrashedServer(i);
-						status.remove(i);
-						i--;
-						serverCount = n.getServerCount();
-						continue;
-					}
-
-					turns.set(i,false);
-					status.set(i, Status.NOTACK);
-
-				}
-			}
-*/
-
-		//NEW VERSION: SENDING TO EVERYONE BUT WAITING ONLY FOR QUORUM
 
 		for (int i = 0; i < serverCount; i++) {
 

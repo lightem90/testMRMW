@@ -31,10 +31,12 @@ public class Tag implements Comparable<Tag>{
 
 		//if labels are equal I check id (they cannot be equal)
 		if (t1.label == t2.label) {
-			if (t1.id > t2.id)
+			Counter c1 = t1.getCounters().getFirst();
+			Counter c2 = t2.getCounters().getFirst();
+			if (c1.getCounter() > c2.getCounter())
 				return t1;
-			else
-				return t2;
+			if (c1.getCounter() == c2.getCounter())
+				return c1.getId() > c2.getId() ? t1 : t2;
 
 		}
 		
