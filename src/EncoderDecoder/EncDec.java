@@ -29,7 +29,7 @@ public class EncDec {
 		Message ret = new Message();
 		String reqT = String.valueOf(INVALID);
 		View tmpV = new View(String.valueOf(INVALID));
-		Tag tmpT = new Tag(INVALID,INVALID);
+		Tag tmpT = new Tag(INVALID,INVALID,INVALID);
 		int tmpS = INVALID;
 
 
@@ -68,6 +68,8 @@ public class EncDec {
 
 		String reqT = msgToEncode.getRequestType();
 		View tmpV = msgToEncode.getView();
+		//if the view is empty may be the case that the string attribute has not been filled
+		if(tmpV.getValue().isEmpty()) tmpV.setStringFromArrayString();
 		Tag tmpT = msgToEncode.getTag();
 		//insert invalid counter if tag is empty (will be removed in decoding phase
 		if (tmpT.getCounters() == null || tmpT.getCounters().size() == 0) {

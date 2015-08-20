@@ -43,8 +43,8 @@ public class electMasterService {
             View nodeView = n.getLocalView();
 
 
-            if ((n.getCm().getFD().calculateActiveNodes() > quorum) &&  nodeView.getIdArray().size() > quorum && isContained(n))
-                seemCrd.add(n);
+            //if ((n.getCm().getFD().calculateActiveNodes() > quorum) &&  nodeView.getIdArray().size() > quorum && isContained(n))
+            seemCrd.add(n);
         }
 
         if (seemCrd.isEmpty() || seemCrd == null) noCrd = true;

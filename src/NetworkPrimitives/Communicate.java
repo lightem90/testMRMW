@@ -233,7 +233,7 @@ public class Communicate {
 	//utilities
 
 	public static Tag findMaxTagFromMessages(Message[] values) {
-		Tag maxTag = new Tag(0, 0);
+		Tag maxTag = new Tag(0, 0,-1);
 		for (Message msg : values) {
 			if (msg != null) {
 				if (msg.getTag().compareTo(maxTag) > 0) {

@@ -100,7 +100,7 @@ public class UserInputProcess {
                             case "read":
 
                                 // creating custom message
-                                usrMsg = new Message("userReadRequest", new Tag(0, 0), new View("userReadReq"), 0);
+                                usrMsg = new Message("userReadRequest", new Tag(0, 0,-1), new View("userReadReq"), 0);
 
                                 try {
                                     sendMessage(channelToServer, usrMsg);
@@ -128,7 +128,7 @@ public class UserInputProcess {
 
                                 View newView = new View(scanner.nextLine());
                                 // creating custom message
-                                usrMsg = new Message("userWriteRequest", new Tag(0, 0),
+                                usrMsg = new Message("userWriteRequest", new Tag(0, 0,-1),
                                         newView, 0);
 
                                 try {

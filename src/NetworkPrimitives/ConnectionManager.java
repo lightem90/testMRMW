@@ -1,6 +1,7 @@
 package NetworkPrimitives;
 
 import EncoderDecoder.EncDec;
+import Structures.Counter;
 import Structures.Message;
 import Structures.Tag;
 import Structures.View;
@@ -67,7 +68,7 @@ public class ConnectionManager {
         n = c;
 
         //initializing rep with first tag and current view (only me active)
-        rep.put(new Tag(c.getMySett().getNodeId(),0),new View(String.valueOf(c.getMySett().getNodeId())));
+        rep.put(new Tag(c.getMySett().getNodeId(),0,0),new View(String.valueOf(c.getMySett().getNodeId())));
 
 
     }
@@ -244,8 +245,7 @@ public class ConnectionManager {
 
                 //FD increment
                 int sendID = receivedMessage.getSenderId();
-                //TODO: commented for now, we have to decide how to handle ids
-                //FD.updateFDForNode(sendID);
+                FD.updateFDForNode(sendID);
 
                 System.out.println("Received query '"
                         + receivedMessage.getRequestType() + "' from node #"
@@ -447,7 +447,7 @@ public class ConnectionManager {
 
     private Tag findMaxTagFromSet(Map<Tag, View> rep) {
 
-        Tag maxTag = new Tag(0, 0);
+        Tag maxTag = new Tag(0, 0,-1);
 
         Set<Tag> tags = rep.keySet();
         for (Tag tag : tags) {
@@ -463,9 +463,21 @@ public class ConnectionManager {
 
     }
 
+    //This function takes old Tag and decide if adding an element to counter list or updating label (just +1 in our case)
     private Tag generateNewTag(Tag lastTag) {
-        lastTag.setId(n.getMySett().getNodeId());
-        lastTag.setLabel(lastTag.getLabel() + 1);
+
+        int id = n.getMySett().getNodeId();
+        //if counter is exhausted I start with a new label and set new counter to 0
+        if (lastTag.isExhausted())
+            return new Tag(id,lastTag.getLabel()+1,0);
+
+        //counter not exhausted so just adding the new value, first 2 lines should be useless
+        lastTag.setId(id);
+        lastTag.setLabel(lastTag.getLabel());
+        lastTag.addCounter(new Counter(id,(lastTag.getCounters().getFirst().getCounter())+1));
+
+
+
         return lastTag;
     }
 

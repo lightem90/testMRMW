@@ -93,7 +93,7 @@ public class Node {
     }
 
     public Tag getLocalTag() {
-        return (localTag==null ? new Tag(-1,-1) : localTag);
+        return (localTag==null ? new Tag(-1,-1,-1) : localTag);
     }
 
     public void setLocalTag(Tag localTag) {
