@@ -17,14 +17,14 @@ public class FailureDetector {
 
 
 
-    /*Constructor takes an array of ids and fill the map considering all nodes as active (we may want to change this) */
+    /*Constructor takes an array of ids and fill the map considering all nodes as in-active (we may want to change this) */
     public FailureDetector(int[] ids, Node n){
 
         activeNodes = new HashMap<>(ids.length);
 
         for (int i : ids){
 
-            activeNodes.put(i,0);
+            activeNodes.put(i,MAXIMUM_HEARTBEAT_VALUE);
 
         }
         current = n;
@@ -33,28 +33,39 @@ public class FailureDetector {
 
     }
 
-    /* reset counter of node with id n to zero updating all the other ones */
+    /* reset counter of node with id n to zero updating all the other ones (the i) */
     public void updateFDForNode(int n) {
 
         boolean flag = false;
+
+        //Signaling a modification to activeNode as occurred (because n is not in the activeNode list)
+        if (!activeNodes.containsKey(n)) {
+            flag = true;
+        }
+
+        //resetting node counter (replaces old value), if the node was removed for inactivity it will be added again
+        activeNodes.put(n, 0);
+
+
         Iterator<Integer> it = activeNodes.keySet().iterator();
+
         while (it.hasNext()) {
-            if (it.next() == n)
-                //resetting node counter (replaces old value), if the node was removed for inactivity it will be added again
-                activeNodes.put(n, 0);
-            else {
+            int i = it.next();
+            if (!(i == n)){
             //checking with heartbeat, if it gets too big I remove the node (counting it as inactive)
-            int newVal = activeNodes.get(n)+1;
+            int newVal = activeNodes.get(i)+1;
 
             if (newVal < MAXIMUM_HEARTBEAT_VALUE)
-                activeNodes.put(n, newVal);
+                activeNodes.put(i, newVal);
             else {
-                activeNodes.remove(n);
+                it.remove();
+                activeNodes.remove(i);
                 flag = true;
                  }
             }
 
         }
+
 
         //if a node has gone offline I have to update node view
         if (flag)
@@ -77,11 +88,8 @@ public class FailureDetector {
 
         //this gets all active nodes ids, builds a new view FIN and sends the information to the node
         Set<Integer> set = activeNodes.keySet();
-        View updView = new View (set.toString());
-        updView.setArrayFromValueString();
-        updView.setStatus(View.Status.FIN);
+        View updView = new View (set);
         current.setLocalView(updView);
-
 
     }
 

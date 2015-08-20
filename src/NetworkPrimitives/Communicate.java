@@ -185,7 +185,7 @@ public class Communicate {
 					}
 
 
-					/* I update FD only on the "receiver" side when I answer back
+					/* TODO: we update FD HERE, has to be properly initialized
 					int sendID = reply.getSenderId();
 					caller.getFD().updateFDForNode(sendID);
 					*/

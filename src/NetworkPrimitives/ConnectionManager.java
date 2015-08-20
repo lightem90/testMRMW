@@ -160,8 +160,7 @@ public class ConnectionManager {
         }
 
 
-        //initializing failure detector (now that I know the number of nodes)
-
+        //TODO: initializing FD getting from file ID IP PORT
         //FD = new FailureDetector(serverCount);
 
         //initializing communicate
@@ -243,9 +242,9 @@ public class ConnectionManager {
                 receivedMessage = ED.decode(msg);
                 addMessage(receivedMessage);
 
-                //FD increment
-                int sendID = receivedMessage.getSenderId();
-                FD.updateFDForNode(sendID);
+                //FD increment (moved in the communicate)
+                //int sendID = receivedMessage.getSenderId();
+                //FD.updateFDForNode(sendID);
 
                 System.out.println("Received query '"
                         + receivedMessage.getRequestType() + "' from node #"
