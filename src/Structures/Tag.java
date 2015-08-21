@@ -75,17 +75,17 @@ public class Tag implements Comparable<Tag>{
 
 			//labels equal so I proceed comparing counter
 			Counter t = anotherTag.getCounters().getFirst();
-			if(t==counters.getFirst())
+			if(t.getCounter()==counters.getFirst().getCounter())
 				//counters equal: breaking simmetry
-				return Integer.compare(t.getId(),counters.getFirst().getId());
+				return Integer.compare(counters.getFirst().getId(),t.getId());
 
 			//counters are different
-			else Long.compare(t.getCounter(),counters.getFirst().getCounter());
+			else return Long.compare(counters.getFirst().getCounter(),t.getCounter());
 
 
 		}
 		//labels are different
-		return Integer.compare(anotherTag.getLabel(),label);
+		return Integer.compare(label,anotherTag.getLabel());
 	}
 	@Override
 	public int hashCode() {

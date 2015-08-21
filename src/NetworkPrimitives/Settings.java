@@ -16,8 +16,9 @@ public class Settings {
 
     public Settings(int n, int p){
 
-        port = p;
         nodeId = n;
+        port = p;
+
 
     }
 

@@ -65,7 +65,8 @@ public class Communicate {
 
 		Message[] values = waitForQuorum(request);
 
-		lastTag = findMaxTagFromMessages(values);
+		//TODO: at the first step all counters are 0 and when they query each other it may happen that I am the one with the highest id, so the "minimum Tag is the one that I have and if somebody else has a bigger one I will consider that one
+		lastTag = findMaxTagFromMessages(values,n.getLocalTag());
 		if (lastTag.compareTo(n.getLocalTag()) >= 0)
 			return lastTag;
 		return null;
@@ -185,10 +186,10 @@ public class Communicate {
 					}
 
 
-					/* TODO: we update FD HERE, has to be properly initialized
+
 					int sendID = reply.getSenderId();
 					caller.getFD().updateFDForNode(sendID);
-					*/
+
 
 
 
@@ -232,8 +233,8 @@ public class Communicate {
 
 	//utilities
 
-	public static Tag findMaxTagFromMessages(Message[] values) {
-		Tag maxTag = new Tag(0, 0,-1);
+	public static Tag findMaxTagFromMessages(Message[] values, Tag maxTag) {
+
 		for (Message msg : values) {
 			if (msg != null) {
 				if (msg.getTag().compareTo(maxTag) > 0) {

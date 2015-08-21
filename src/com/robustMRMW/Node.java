@@ -40,6 +40,8 @@ public class Node {
     public Node(Settings settings) {
 
         mySett = settings;
+        //initializing initial tag with all zeroes and my id
+        localTag = new Tag(mySett.getNodeId(),0,0);
         cm = new ConnectionManager(this);
         setIsMaster(false);
 

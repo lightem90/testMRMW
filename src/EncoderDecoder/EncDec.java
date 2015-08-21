@@ -47,7 +47,7 @@ public class EncDec {
 				Counter tmp = new Counter(Integer.parseInt(tag_tokens[2]), Integer.parseInt(tag_tokens[3]));
 				//not adding counter if is the invalid one
 				if (!(tmp.getCounter() == -1) && !(tmp.getId() == -1))
-					tmpT.getCounters().add(tmp);
+					tmpT.getCounters().addFirst(tmp);
 
 			}
 

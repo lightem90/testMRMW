@@ -67,8 +67,8 @@ public class ConnectionManager {
         ED = new EncDec();
         n = c;
 
-        //initializing rep with first tag and current view (only me active)
-        rep.put(new Tag(c.getMySett().getNodeId(),0,0),new View(String.valueOf(c.getMySett().getNodeId())));
+        //initializing rep with first tag and current view (nobody active), the view will change as soon as we receive messages from other nodes
+        rep.put(n.getLocalTag(),new View (""));
 
 
     }
@@ -99,7 +99,7 @@ public class ConnectionManager {
 
             // writing local address to file
             Path filePath = Paths.get(ADDRESS_PATH);
-            String toWrite = String.format(serverChannel.getLocalAddress()
+            String toWrite = String.format(n.getMySett().getNodeId() + " " + serverChannel.getLocalAddress()
                     + "%n");
             System.out.println("The address of this node is: " + toWrite);
 
@@ -119,20 +119,30 @@ public class ConnectionManager {
         System.out.println("Reading addresses from file " + ADDRESS_PATH);
 
 
+
         try {
             int i;
             // read addresses from file
             Path filePath = Paths.get(ADDRESS_PATH);
             List<String> lines = Files.readAllLines(filePath);
+            ArrayList<Integer> ids = new ArrayList<>(lines.size());
 
-            // for each line if it's not my port I'll add the address to the
-            // array of addresses
+            // for each line if it's not my port I'll add the address to the array of addresses
             for (i = 0; i < lines.size(); i++) {
 
                 String line = lines.get(i);
-                if (!line.equals(hostAddress.toString()))
-                    otherNodesAddress.add(getAddressFromString(line));
+                String[] tokens = line.split(" ");
+
+
+                if (!tokens[1].equals(hostAddress.toString())) {
+                    otherNodesAddress.add(getAddressFromString(tokens[1]));
+                    System.out.println("Adding node with id to Failure Detector: " + tokens[0]);
+                    ids.add(Integer.parseInt(tokens[0]));
+                }
             }
+
+            //initializing failure detector with data read from file
+            FD = new FailureDetector(ids,n);
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -242,10 +252,6 @@ public class ConnectionManager {
                 receivedMessage = ED.decode(msg);
                 addMessage(receivedMessage);
 
-                //FD increment (moved in the communicate)
-                //int sendID = receivedMessage.getSenderId();
-                //FD.updateFDForNode(sendID);
-
                 System.out.println("Received query '"
                         + receivedMessage.getRequestType() + "' from node #"
                         + receivedMessage.getSenderId());
@@ -259,6 +265,9 @@ public class ConnectionManager {
                         break;
                     case "pre-write":
                         Tag newTag = receivedMessage.getTag();
+                        System.out.println("Received tag has: label->" + newTag.getLabel() + " counter->" + newTag.getCounters().getFirst().getCounter() + " written by->" + newTag.getCounters().getFirst().getId());
+                        System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
+
                         if (maxTag.compareTo(newTag) >= 0) {
                             System.out.println("Received tag smaller than local max tag");
                             break;
@@ -272,7 +281,10 @@ public class ConnectionManager {
                                 n.getLocalView(), n.getMySett().getNodeId()));
                         break;
                     case "finalize":
+
                         Tag bestTag = receivedMessage.getTag();
+                        System.out.println("Received tag has: label->" + bestTag.getLabel() + " counter->" + bestTag.getCounters().getFirst().getCounter() + " written by->" + bestTag.getCounters().getFirst().getId());
+                        System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
 
                         if (rep.containsKey(bestTag)) {
                             rep.get(bestTag).setStatus(View.Status.FIN);
@@ -345,6 +357,7 @@ public class ConnectionManager {
         Tag maxTag;
         if ((maxTag = comm.query()) == null)
             return;
+        System.out.println("Received tag after query has: label->" + maxTag.getLabel() + " counter->" + maxTag.getCounters().getFirst().getCounter() + " written by->" + maxTag.getCounters().getFirst().getId());
         View rcvView = comm.finalizeRead();
         n.setLocalTag(maxTag);
         n.setLocalView(rcvView);
@@ -363,7 +376,9 @@ public class ConnectionManager {
         Tag maxTag;
         if ((maxTag = comm.query()) == null)
             return;
+        System.out.println("Received tag after query has: label->" + maxTag.getLabel() + " counter->" + maxTag.getCounters().getFirst().getCounter() + " written by->" + maxTag.getCounters().getFirst().getId());
         Tag newTag = generateNewTag(maxTag);
+        System.out.println("Writing new tag: label->" + newTag.getLabel() + " counter->" + newTag.getCounters().getFirst().getCounter() + " written by->" + newTag.getCounters().getFirst().getId());
         comm.preWrite(newTag, newView);
         n.setLocalTag(newTag);
         n.setLocalView(newView);
@@ -398,10 +413,7 @@ public class ConnectionManager {
     private void sendMessage(SocketChannel s, Message m) throws IOException {
 
         writeBuffer.clear();
-        writeBuffer.put(ED.encode(m).getBytes()); // filling
-        // buffer
-        // with
-        // message
+        writeBuffer.put(ED.encode(m).getBytes());
         writeBuffer.flip();
 
         while (writeBuffer.hasRemaining())
@@ -424,10 +436,6 @@ public class ConnectionManager {
             key.cancel();
             return;
         }
-
-        // Register an interest in writing on this channel because I just
-        // connected to it
-        //key.interestOps(SelectionKey.OP_WRITE);
     }
 
 
@@ -446,7 +454,8 @@ public class ConnectionManager {
 
     private Tag findMaxTagFromSet(Map<Tag, View> rep) {
 
-        Tag maxTag = new Tag(0, 0,-1);
+        //the minimum tag that we have is the localTag (initialized to id,0,0 at the beginning)
+        Tag maxTag = n.getLocalTag();
 
         Set<Tag> tags = rep.keySet();
         for (Tag tag : tags) {
@@ -473,7 +482,8 @@ public class ConnectionManager {
         //counter not exhausted so just adding the new value, first 2 lines should be useless
         lastTag.setId(id);
         lastTag.setLabel(lastTag.getLabel());
-        lastTag.addCounter(new Counter(id,(lastTag.getCounters().getFirst().getCounter())+1));
+        int newCVal = (int) ((lastTag.getCounters().getFirst().getCounter())+1);
+        lastTag.addCounter(new Counter(id,newCVal));
 
 
 

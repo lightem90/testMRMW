@@ -2,6 +2,7 @@ package com.robustMRMW;
 
 import Structures.View;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Set;
@@ -18,15 +19,17 @@ public class FailureDetector {
 
 
     /*Constructor takes an array of ids and fill the map considering all nodes as in-active (we may want to change this) */
-    public FailureDetector(int[] ids, Node n){
+    public FailureDetector(ArrayList<Integer>ids, Node n){
 
-        activeNodes = new HashMap<>(ids.length);
+        activeNodes = new HashMap<>(ids.size());
 
-        for (int i : ids){
+        //at start we consider all nodes offline so no need to do this, because it will set a wrong initial view
+        /*for (int i : ids){
 
             activeNodes.put(i,MAXIMUM_HEARTBEAT_VALUE);
 
         }
+        */
         current = n;
 
         updateNodeLocalView();
