@@ -22,14 +22,6 @@ public class FailureDetector {
     public FailureDetector(ArrayList<Integer>ids, Node n){
 
         activeNodes = new HashMap<>(ids.size());
-
-        //at start we consider all nodes offline so no need to do this, because it will set a wrong initial view
-        /*for (int i : ids){
-
-            activeNodes.put(i,MAXIMUM_HEARTBEAT_VALUE);
-
-        }
-        */
         current = n;
 
         updateNodeLocalView();

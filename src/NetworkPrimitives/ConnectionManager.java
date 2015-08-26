@@ -12,10 +12,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.*;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,7 +33,7 @@ public class ConnectionManager {
 
 
     // Class buffer
-    public static final int BUFFER_SIZE = 1024; // random for now
+    private static final int BUFFER_SIZE = 1024; // random for now
     private ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
     private ByteBuffer writeBuffer = ByteBuffer.allocate(BUFFER_SIZE);
 
@@ -47,6 +44,7 @@ public class ConnectionManager {
     private ArrayList<SocketChannel> serverChannels;
     private ArrayList<InetSocketAddress> otherNodesAddress;
     private Map<Tag, View> rep;
+    private int quorum;
 
     private LinkedList<Message> messageList;
 
@@ -112,11 +110,12 @@ public class ConnectionManager {
             e.printStackTrace();
         }
 
-        System.out.println("Press enter when all servers wrote the address");
+        /*System.out.println("Press enter when all servers wrote the address");
         Scanner s = new Scanner(System.in);
         s.nextLine();
 
         System.out.println("Reading addresses from file " + ADDRESS_PATH);
+        */
 
 
 
@@ -126,6 +125,9 @@ public class ConnectionManager {
             Path filePath = Paths.get(ADDRESS_PATH);
             List<String> lines = Files.readAllLines(filePath);
             ArrayList<Integer> ids = new ArrayList<>(lines.size());
+
+            //setting quorum (all nodes ips should be written in file AT THE BEGINNING
+            quorum = (lines.size()/2) +1;
 
             // for each line if it's not my port I'll add the address to the array of addresses
             for (i = 0; i < lines.size(); i++) {
@@ -154,27 +156,33 @@ public class ConnectionManager {
 
         System.out.println(n.getMySett().getNodeId() + " Connecting to existing nodes");
 
+
         for (InetSocketAddress address : otherNodesAddress) {
 
             SocketChannel channelToAdd = SocketChannel.open();
             channelToAdd.configureBlocking(false);
 
             SocketAddress toAdd = address;
-
-            // connect to server with inetadresses previously read, TODO: we assume connect works
             channelToAdd.connect(toAdd);
+
             SelectionKey key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
             serverCount++;
             serverChannels.add(channelToAdd);
 
+            if(channelToAdd.isConnectionPending())
+                channelToAdd.finishConnect();
+
         }
 
 
-        //TODO: initializing FD getting from file ID IP PORT
-        //FD = new FailureDetector(serverCount);
 
         //initializing communicate
         comm = new NetworkPrimitives.Communicate(n,this);
+
+        Message init = new Message("init", new Tag(-1,-1,-1), new View(""), n.getMySett().getNodeId());
+        for (SocketChannel ch : serverChannels)
+            sendMessage(ch,init);
+
 
     }
 
@@ -205,17 +213,12 @@ public class ConnectionManager {
                         continue;
                     }
 
-                    // Check what event is available and deal with it
+
                     if (key.isAcceptable()) {
-                        // a connection was accepted by a ServerSocketChannel
                         accept(key);
                     } else if (key.isReadable()) {
                         System.out.println("IS READABLE");
-                        // a channel is ready for reading
                         parseInput(key);
-                        /*
-						 * } else if (key.isWritable()) { // a channel is ready for writing write(key);
-						 */
                     } else if (key.isConnectable()) {
                         finishConnection(key);
                     }
@@ -258,11 +261,23 @@ public class ConnectionManager {
                 Tag maxTag = findMaxTagFromSet(rep);
 
                 switch (receivedMessage.getRequestType()) {
-                    case "query":
 
-                        sendMessage(channel,
-                                new Message("query-ack", maxTag, rep.get(maxTag), n.getMySett().getNodeId()));
+                    //New messages to handle new server connection, init_ack is used only to update client FD, init connects the new client and updates communicate obj (chans, serverNumber etc..)
+                    case "init":
+                        //update FD, serverChannels and serverCount
+                        handleConnectionRequest(key,receivedMessage);
+                        FD.updateFDForNode(receivedMessage.getSenderId());
+                        comm = new Communicate(n,this);
                         break;
+
+                    case "init_ack":
+                        FD.updateFDForNode(receivedMessage.getSenderId());
+                        break;
+
+                    case "query":
+                        sendMessage(channel, new Message("query-ack", maxTag, rep.get(maxTag), n.getMySett().getNodeId()));
+                        break;
+
                     case "pre-write":
                         Tag newTag = receivedMessage.getTag();
                         System.out.println("Received tag has: label->" + newTag.getLabel() + " counter->" + newTag.getCounters().getFirst().getCounter() + " written by->" + newTag.getCounters().getFirst().getId());
@@ -280,6 +295,7 @@ public class ConnectionManager {
                         sendMessage(channel, new Message("pre-write-ack", n.getLocalTag(),
                                 n.getLocalView(), n.getMySett().getNodeId()));
                         break;
+
                     case "finalize":
 
                         Tag bestTag = receivedMessage.getTag();
@@ -290,27 +306,33 @@ public class ConnectionManager {
                             rep.get(bestTag).setStatus(View.Status.FIN);
                             sendMessage(channel, new Message("fin-ack", n.getLocalTag(),
                                     n.getLocalView(), n.getMySett().getNodeId()));
-                        } else
-                            rep.put(bestTag, new View(""));
+                        } else {
+
+                            //TODO: had to had a response, otherwise no ack was sent and couldn't go forward
+                            //if we are here the tag we received is not contained in our rep map (can happen). Check the paper on drive
+                            View tmp = new View("");
+                            tmp.setStatus(View.Status.FIN);
+                            rep.put(bestTag, tmp);
+                            sendMessage(channel, new Message("fin-ack", bestTag,
+                                    tmp, n.getMySett().getNodeId()));
+                        }
                         n.getLocalView().setStatus(View.Status.FIN);
 
                         break;
+
                     case "gossip":
                         Tag latestTag = receivedMessage.getTag();
                         if (rep.containsKey(latestTag))
                             rep.put(latestTag, receivedMessage.getView());
                         break;
+
                     case "userReadRequest":
                         read();
                         sendMessage(channel,
                                 new Message("success", n.getLocalTag(),
                                         n.getLocalView(), n.getMySett().getNodeId()));
-                        /*try {
-                            TimeUnit.SECONDS.sleep(30);
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }*/
                         break;
+
                     case "userWriteRequest":
                         write(receivedMessage.getView());
                         System.out.println("Replying to request with result: success");
@@ -336,16 +358,8 @@ public class ConnectionManager {
         ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key
                 .channel();
         SocketChannel socketChannel = serverSocketChannel.accept();
-
-        // setting non blocking option (to be 100% sure)
         socketChannel.configureBlocking(false);
 
-        // other possible options
-        // socketChannel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
-        // socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
-
-        // this because the selector has been accepted and we are waiting for a
-        // read (otherwise the key.isReadable check won't work)
         socketChannel.register(selector, SelectionKey.OP_READ);
 
         System.out.println("Client listening on local port: " + socketChannel.getLocalAddress());
@@ -501,6 +515,64 @@ public class ConnectionManager {
 
     }
 
+    private void handleConnectionRequest(SelectionKey k, Message m){
+
+        Path filePath = Paths.get(ADDRESS_PATH);
+        List<String> lines = null;
+        try {
+
+            lines = Files.readAllLines(filePath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        // for each line if it's not my port I'll add the address to the array of addresses
+        for (int i = 0; i < lines.size(); i++) {
+
+            String line = lines.get(i);
+            String[] tokens = line.split(" ");
+            if (m.getSenderId() == Integer.parseInt(tokens[0])) {
+                if (!otherNodesAddress.contains(tokens[1]))
+                    otherNodesAddress.add(getAddressFromString(tokens[1]));
+
+
+                SocketChannel channelToAdd = null;
+                try {
+
+                    channelToAdd = SocketChannel.open();
+                    channelToAdd.configureBlocking(false);
+                    channelToAdd.connect(getAddressFromString(tokens[1]));
+
+
+                    try {
+                        SelectionKey key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
+                    } catch (ClosedChannelException e) {
+                        e.printStackTrace();
+                    }
+
+                    serverCount++;
+                    serverChannels.add(channelToAdd);
+
+
+                    if(channelToAdd.isConnectionPending())
+                        channelToAdd.finishConnect();
+
+
+                    Message init = new Message("init_ack", new Tag(-1,-1,-1), new View(""), n.getMySett().getNodeId());
+                    sendMessage(channelToAdd,init);
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+
+            }
+
+        }
+
+
+    }
+
 
     /* Getters and Setters */
     public ArrayList<SocketChannel> getServerChannels() {
@@ -525,6 +597,10 @@ public class ConnectionManager {
 
     public void setFD(FailureDetector FD) {
         this.FD = FD;
+    }
+
+    public int getQuorum() {
+        return quorum;
     }
 
 

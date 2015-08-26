@@ -1,25 +1,11 @@
 package com.robustMRMW;
 
-import NetworkPrimitives.Communicate;
 import NetworkPrimitives.ConnectionManager;
 import NetworkPrimitives.Settings;
-import Structures.Message;
 import Structures.Tag;
 import Structures.View;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.util.*;
 
 public class Node {
@@ -65,7 +51,10 @@ public class Node {
 
     public void run(){
 
-        cm.run();
+        //TODO: Node can run only if there's a quorum, setting to 0 for now (always true)
+        if (cm.getQuorum() > 0)
+
+            cm.run();
 
 
     }

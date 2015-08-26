@@ -15,22 +15,23 @@ import java.util.ArrayList;
 public class Communicate {
 
 	//Class constants
-	public static final int BUFFER_SIZE = 1024; // random for now
-	ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
-	ByteBuffer writeBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+	private static final int BUFFER_SIZE = 1024; // random for now
+	private ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+	private ByteBuffer writeBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+
 
 	//Class variables
-	int serverCount;
-	ArrayList<Boolean> turns;
-	ArrayList<SocketChannel> chan;
+	private int serverCount;
+	private ArrayList<Boolean> turns;
+	private ArrayList<SocketChannel> chan;
 
 	//Custom objects
-	Tag lastTag;
-	Node n;
-	EncDec ED;
-	ConnectionManager caller;
+	private Tag lastTag;
+	private Node n;
+	private EncDec ED;
+	private ConnectionManager caller;
 
-	public enum Status {
+	private enum Status {
 		NOTACK, NOTSENT, ACK
 	}
 
@@ -256,5 +257,23 @@ public class Communicate {
 			e.printStackTrace();
 		}
 
+	}
+
+
+	/*Getters and Setters */
+	public int getServerCount() {
+		return serverCount;
+	}
+
+	public void setServerCount(int serverCount) {
+		this.serverCount = serverCount;
+	}
+
+	public ArrayList<SocketChannel> getChan() {
+		return chan;
+	}
+
+	public void setChan(ArrayList<SocketChannel> chan) {
+		this.chan = chan;
 	}
 }
