@@ -12,6 +12,7 @@ import java.util.Set;
  */
 public class FailureDetector {
 
+
     private static final int MAXIMUM_HEARTBEAT_VALUE = 50;
     private HashMap<Integer,Integer> activeNodes;
     Node current;
@@ -31,6 +32,7 @@ public class FailureDetector {
     /* reset counter of node with id n to zero updating all the other ones (the i) */
     public void updateFDForNode(int n) {
 
+        //TODO: add checks on the id
         boolean flag = false;
 
         //Signaling a modification to activeNode as occurred (because n is not in the activeNode list)
@@ -78,7 +80,7 @@ public class FailureDetector {
     }
 
 
-    //this method is called each time an id has gone offline and at start (because all connected nodes are considered active)
+    //this method is called each time an id has gone offline, at start (because all connected nodes are considered active) and in general each time we signal a change to the node
     private void updateNodeLocalView(){
 
         //this gets all active nodes ids, builds a new view FIN and sends the information to the node

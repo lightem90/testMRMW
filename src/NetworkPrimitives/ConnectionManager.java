@@ -55,7 +55,7 @@ public class ConnectionManager {
     private EncDec ED;
 
 
-
+    // Initialization
     public ConnectionManager(Node c){
 
 
@@ -110,7 +110,9 @@ public class ConnectionManager {
             e.printStackTrace();
         }
 
-        /*System.out.println("Press enter when all servers wrote the address");
+        /*
+
+        System.out.println("Press enter when all servers wrote the address");
         Scanner s = new Scanner(System.in);
         s.nextLine();
 
@@ -352,6 +354,77 @@ public class ConnectionManager {
         }
     }
 
+
+    /* this handles the case in which we receive a init message and we have to update the list of nodes addresses, channels and FD (and answering) */
+    private void handleConnectionRequest(SelectionKey k, Message m){
+
+        Path filePath = Paths.get(ADDRESS_PATH);
+        List<String> lines = null;
+        try {
+
+            lines = Files.readAllLines(filePath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        // for each line if it's not my port I'll add the address to the array of addresses
+        for (int i = 0; i < lines.size(); i++) {
+
+            String line = lines.get(i);
+            String[] tokens = line.split(" ");
+            if (m.getSenderId() == Integer.parseInt(tokens[0])) {
+                if (!otherNodesAddress.contains(tokens[1]))
+                    otherNodesAddress.add(getAddressFromString(tokens[1]));
+
+
+                SocketChannel channelToAdd = null;
+                try {
+
+                    channelToAdd = SocketChannel.open();
+                    channelToAdd.configureBlocking(false);
+                    channelToAdd.connect(getAddressFromString(tokens[1]));
+
+
+                    try {
+                        SelectionKey key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
+                    } catch (ClosedChannelException e) {
+                        e.printStackTrace();
+                    }
+
+                    serverCount++;
+                    serverChannels.add(channelToAdd);
+
+
+                    if(channelToAdd.isConnectionPending())
+                        channelToAdd.finishConnect();
+
+
+                    Message init = new Message("init_ack", new Tag(-1,-1,-1), new View(""), n.getMySett().getNodeId());
+                    sendMessage(channelToAdd,init);
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+
+            }
+
+        }
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
     //Networking functions
 
     private void accept(SelectionKey key) throws IOException {
@@ -424,18 +497,6 @@ public class ConnectionManager {
 
     }
 
-    private void sendMessage(SocketChannel s, Message m) throws IOException {
-
-        writeBuffer.clear();
-        writeBuffer.put(ED.encode(m).getBytes());
-        writeBuffer.flip();
-
-        while (writeBuffer.hasRemaining())
-            s.write(writeBuffer); // writing messsage to server
-        writeBuffer.clear();
-
-    }
-
     /* method for estabilishing connection to other server */
     private void finishConnection(SelectionKey key) throws IOException {
         SocketChannel socketChannel = (SocketChannel) key.channel();
@@ -466,14 +527,15 @@ public class ConnectionManager {
     }
 
 
-    private Tag findMaxTagFromSet(Map<Tag, View> rep) {
+    /* finds the hidhest tag in rep map */
+    private Tag findMaxTagFromSet(Map<Tag, View> map) {
 
         //the minimum tag that we have is the localTag (initialized to id,0,0 at the beginning)
         Tag maxTag = n.getLocalTag();
 
-        Set<Tag> tags = rep.keySet();
+        Set<Tag> tags = map.keySet();
         for (Tag tag : tags) {
-            if (rep.get(tag).getStatus() == View.Status.PRE)
+            if (map.get(tag).getStatus() == View.Status.PRE)
                 continue;
             if (tag.compareTo(maxTag) > 0) {
                 maxTag = tag;
@@ -485,7 +547,7 @@ public class ConnectionManager {
 
     }
 
-    //This function takes old Tag and decide if adding an element to counter list or updating label (just +1 in our case)
+    /* This function takes old Tag and decide if adding an element to counter list or updating label (just +1 in our case) */
     private Tag generateNewTag(Tag lastTag) {
 
         int id = n.getMySett().getNodeId();
@@ -515,63 +577,21 @@ public class ConnectionManager {
 
     }
 
-    private void handleConnectionRequest(SelectionKey k, Message m){
 
-        Path filePath = Paths.get(ADDRESS_PATH);
-        List<String> lines = null;
-        try {
+    /* writes message into buffer */
+    private void sendMessage(SocketChannel s, Message m) throws IOException {
 
-            lines = Files.readAllLines(filePath);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        writeBuffer.clear();
+        writeBuffer.put(ED.encode(m).getBytes());
+        writeBuffer.flip();
 
-        // for each line if it's not my port I'll add the address to the array of addresses
-        for (int i = 0; i < lines.size(); i++) {
-
-            String line = lines.get(i);
-            String[] tokens = line.split(" ");
-            if (m.getSenderId() == Integer.parseInt(tokens[0])) {
-                if (!otherNodesAddress.contains(tokens[1]))
-                    otherNodesAddress.add(getAddressFromString(tokens[1]));
-
-
-                SocketChannel channelToAdd = null;
-                try {
-
-                    channelToAdd = SocketChannel.open();
-                    channelToAdd.configureBlocking(false);
-                    channelToAdd.connect(getAddressFromString(tokens[1]));
-
-
-                    try {
-                        SelectionKey key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
-                    } catch (ClosedChannelException e) {
-                        e.printStackTrace();
-                    }
-
-                    serverCount++;
-                    serverChannels.add(channelToAdd);
-
-
-                    if(channelToAdd.isConnectionPending())
-                        channelToAdd.finishConnect();
-
-
-                    Message init = new Message("init_ack", new Tag(-1,-1,-1), new View(""), n.getMySett().getNodeId());
-                    sendMessage(channelToAdd,init);
-
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-
-
-            }
-
-        }
-
+        while (writeBuffer.hasRemaining())
+            s.write(writeBuffer); // writing messsage to server
+        writeBuffer.clear();
 
     }
+
+
 
 
     /* Getters and Setters */

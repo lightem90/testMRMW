@@ -24,9 +24,11 @@ public class EncDec {
 
 
 	//TODO: checks
+	/* This method takes a string and returns the message encoded in it. We use it when the read operation in the buffer ends */
     public Message decode(String stringToDecode){
 
 		Message ret = new Message();
+		//setting invalid return character (so we can check if the method didn't work)
 		String reqT = String.valueOf(INVALID);
 		View tmpV = new View(String.valueOf(INVALID));
 		Tag tmpT = new Tag(INVALID,INVALID,INVALID);
@@ -62,7 +64,8 @@ public class EncDec {
     }
 
 
-
+	//TODO: checks
+	/* This method takes a message and returns the string that encodes it. We use it when we write in the socket buffer */
     public String encode (Message msgToEncode){
 
 
@@ -81,6 +84,7 @@ public class EncDec {
 
 		int tmpS = msgToEncode.getSenderId();
 
+		//building the string with previous checked values
 		StringBuilder sb = new StringBuilder();
 
 		sb.append(reqT);

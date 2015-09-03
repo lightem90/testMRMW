@@ -35,12 +35,13 @@ public class Communicate {
 		NOTACK, NOTSENT, ACK
 	}
 
+	//initialization
 	public Communicate(Node currNode, ConnectionManager cm) {
 
 		serverCount = cm.getServerCount();
 		chan = cm.getServerChannels();
 
-		//initializing all position to true
+		//initializing all position to true, meaning we have to send to everyone
 		turns = new ArrayList<>(serverCount);
 		for (int i = 0; i < serverCount; i++) {
 
@@ -66,9 +67,9 @@ public class Communicate {
 
 		Message[] values = waitForQuorum(request);
 
-		//TODO: at the first step all counters are 0 and when they query each other it may happen that I am the one with the highest id, so the "minimum Tag is the one that I have and if somebody else has a bigger one I will consider that one
+		//last tag CAN'T be smaller than local tag
 		lastTag = findMaxTagFromMessages(values,n.getLocalTag());
-		if (lastTag.compareTo(n.getLocalTag()) >= 0)
+		if (lastTag.compareTo(n.getLocalTag()) >= 0) //TODO: this check is useless, this condition is met in findMaxTagFromMessages
 			return lastTag;
 		return null;
 	}
@@ -118,17 +119,19 @@ public class Communicate {
 		Message[] values = new Message[serverCount];
 		ArrayList<Status> status = new ArrayList<>(serverCount);
 
-		// initialize status and service variables
+		// initialize status and service variables, we have to send to everyone
 		int ackCounter = 0;
 		for (int i = 0; i < serverCount; i++) {
 			values[i] = null;
 			status.add(Status.NOTSENT);
 		}
 
+		//encoding message and writing it into the buffer
 		String toSend = ED.encode(request);
 		writeBuffer.clear();
 		writeBuffer.put(toSend.getBytes());
 
+		//writing message on EVERY open channel
 		for (int i = 0; i < serverCount; i++) {
 
 				try {
@@ -141,8 +144,9 @@ public class Communicate {
 						chan.get(i).write(writeBuffer);
 
 				} catch (IOException e) {
-					System.out
-							.println("Channel doesn't exist anymore, removing it");
+
+					//if write fails it means that the channel has been closed so we cannot write to it
+					System.out.println("Channel doesn't exist anymore, removing it");
 					removeCrashedServer(i, chan);
 					status.remove(i);
 					i--;
@@ -150,6 +154,7 @@ public class Communicate {
 					continue;
 				}
 
+				//this means that we sent the message to i and we are waiting for an ack from it
 				turns.set(i,false);
 				status.set(i, Status.NOTACK);
 
@@ -174,11 +179,14 @@ public class Communicate {
 
 						if (message.equals(""))
 							continue;
+						//handling multiple messages on buffer
 						String[] tokens = message.split("&");
+						//decoding earlier message
 						reply = ED.decode(tokens[0]);
 					} catch (IOException e) {
-						System.out
-								.println("Channel doesn't exist anymore, removing it");
+
+						//if write fails it means that the channel has been closed so we cannot write to it
+						System.out.println("Channel doesn't exist anymore, removing it");
 						removeCrashedServer(i, chan);
 						status.remove(i);
 						i--;
@@ -186,14 +194,11 @@ public class Communicate {
 						continue;
 					}
 
+					//updating FD
+					caller.getFD().updateFDForNode(reply.getSenderId());
 
 
-					int sendID = reply.getSenderId();
-					caller.getFD().updateFDForNode(sendID);
-
-
-
-
+					//handling older messages
 					if (status.get(i) == Status.NOTSENT) {
 
 						try {
@@ -206,8 +211,9 @@ public class Communicate {
 							}
 
 						} catch (IOException e) {
-							System.out
-									.println("Channel doesn't exist anymore, removing it");
+
+							//if write fails it means that the channel has been closed so we cannot write to it
+							System.out.println("Channel doesn't exist anymore, removing it");
 							removeCrashedServer(i, chan);
 							status.remove(i);
 							serverCount = caller.getServerCount();
@@ -216,7 +222,10 @@ public class Communicate {
 						}
 						turns.set(i,false);
 						status.set(i, Status.NOTACK);
-					} else {
+					}
+					//if it was not an older message we can store it consider the ack and wait for another write
+					else {
+
 						values[i] = new Message(reply.getRequestType(),reply.getTag(),reply.getView(),reply.getSenderId());
 						status.set(i, Status.ACK);
 						turns.set(i,true);

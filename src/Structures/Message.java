@@ -1,8 +1,9 @@
 package Structures;
 
+//Core of message passing system, we use this class to store and share the information the servers need to know
 public class Message {
 
-	private String requestType; // type of request
+	private String requestType;
 	private View view;
 	private Tag tag;
 	private int senderId;

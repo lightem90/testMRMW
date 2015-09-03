@@ -9,8 +9,7 @@ import com.robustMRMW.Node;
 public class Counter {
 
 
-
-
+    /* Two simple attributes to identify a write operation in the system, counter attribute can store 2^64 -1 values */
     private int id;
     private long counter;
 

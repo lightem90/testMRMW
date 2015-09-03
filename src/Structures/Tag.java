@@ -1,19 +1,19 @@
 package Structures;
 
-import com.robustMRMW.Node;
-
 import java.util.LinkedList;
 
+/* Class used to identify an operation in the system, in this way we can implement a multi reader multi writer, take a look in the paper for a deeper explanation */
 public class Tag implements Comparable<Tag>{
 
+	//we can't send an infinite counter list so we limit the size of it
 	private static int MAXIMUM_LIST_SIZE = 10;
 
 	private int id;
-	private int label;
+	private int label; //not really correct
 	private LinkedList<Counter> counters;
 
 
-	//intializes a new Tag with an empty counter
+	//init a new Tag with an empty counter
 	public Tag(int id, int label, int firstCounterValue) {
 
 		this.id = id;
@@ -25,6 +25,8 @@ public class Tag implements Comparable<Tag>{
 
 	}
 
+
+	//compares two tag returning the highest one
 	public Tag greatestTag(Tag t1, Tag t2) {
 
 		//checking order: label -> counter -> id
@@ -50,7 +52,8 @@ public class Tag implements Comparable<Tag>{
 
 	}
 
-	//TODO: How are we sure that the first is ALWAYS the bigger one?
+	//TODO: How are we 100% SURE that the first is ALWAYS the bigger one?
+	//just adding last (bigger) counter to the list
 	public void addCounter(Counter c){
 
 		if (counters.size() >= MAXIMUM_LIST_SIZE)
@@ -59,6 +62,7 @@ public class Tag implements Comparable<Tag>{
 		counters.addFirst(c);
 	}
 
+	//we use only 2^32 values of counter (is 2^64), so we have to check if the label is exhausted or not
 	public boolean isExhausted(){
 		if (this.getCounters().getFirst().getCounter()+1 >= Integer.MAX_VALUE)
 			return true;

@@ -1,13 +1,11 @@
 package Structures;
 
-import com.robustMRMW.Node;
-
-import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Set;
 
+
+/* Used to store the information about the nodes this node considers online, the information is encode both in a string (by separating ids) and in an arraylist to retrieve them faster */
 public class View {
 
 	private static final String ID_SEPARATOR = "/";
@@ -28,6 +26,7 @@ public class View {
 
 
 	//AD-HOC constructor to update view from Failure Detector, it fills the arrayList, the string to be send and the status variable
+	//We need this to update the local node view every time a node comes online/offline
 	public View (Set s){
 
 		idArray = new ArrayList<Integer>(s.size());
@@ -49,6 +48,7 @@ public class View {
 
 	}
 
+	/* Next two methods are used to set the string or the array when we acquire the view by array or string, in this way in the future we can refer to a view with both data structures */
 	public void setArrayFromValueString(){
 
 		String[] tokens = value.split(ID_SEPARATOR);
