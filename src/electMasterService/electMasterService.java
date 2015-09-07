@@ -28,6 +28,8 @@ public class electMasterService {
 
 
     /*TODO: How do we start the leader election routine and how we get this structures? More messages? */
+    /*TOREPLY: leader election starts when the failure detector says the current leader is dead*/
+
     public electMasterService(int networkNodes, Map<Integer,Integer> nodeFailureDetector, ArrayList<Message> repliesArray, Map<Integer, Message> repliesArrayPropView ){
 
         numberOfNodes = networkNodes;
@@ -58,27 +60,33 @@ public class electMasterService {
                 seemCrd.add(m.getSenderId());
         }
 
-        if (seemCrd.isEmpty() || seemCrd == null) noCrd = true;
+        if (seemCrd == null || seemCrd.isEmpty()) noCrd = true;
         proposeMaster();
 
     }
 
     //TODO: method to send the possible master suggestion to all active nodes
+    //TOREPLY: nothing to send, once the leader is chosen "we know" that everyone else has made the same choice
     public void proposeMaster(){
 
-        int masterId;
-        findPossibleMasters();
+        int masterId = -1;
 
-        if (!noCrd) {
-
+        if(noCrd){
+           /*
+           * for every node in my FD that has ME in their FD, count those that have the noCrd set to true TODO: have to send noCrd somehow
+           * if these nodes with noCrd reach a quorum, I propose my FD as View (acting like a leader ??)
+           * */
+        }
+        else{
             seemCrd.sort(new Comparator<Integer>() {
                 @Override
                 public int compare(Integer o1, Integer o2) {
                     return o1.compareTo(o2);
                 }
             });
+            masterId = seemCrd.get(0);
         }
-        masterId = seemCrd.get(0);
+
         electMaster(masterId);
 
     }
@@ -86,6 +94,7 @@ public class electMasterService {
 
 
     //TODO: broadcast new elected correct master and return with the id to node code
+    //TOREPLY: again, nothing has to be sent. Only the leader sends things IF he wants to. #BIGDICKLEADERS
     public int electMaster(int mId){
 
         //TODO: Build ad-hoc message to propose master and wait for quorum (communicate like)
