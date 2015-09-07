@@ -4,11 +4,13 @@ package electMasterService;
  * Created by Matteo on 13/07/2015.
  */
 
+import Structures.Message;
 import com.robustMRMW.Node;
 import Structures.View;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Map;
 
 //as stated in the paper, probably we have to implement other messages to implement the election procedure (acknowledge of missing master for example)
 //moreover we should keep for each server the last message from it into a list, in this way we can retrieve its id and view, OR asking from it again with more messages
@@ -16,38 +18,48 @@ public class electMasterService {
 
     private int quorum;
     private int numberOfNodes;
-    private ArrayList<Integer> failureDetector;
-    private ArrayList<Node> rep;
-    private ArrayList<Node> seemCrd;
+    private Map<Integer,Integer> failureDetector;
+    private ArrayList<Message> rep;
+    private Map<Integer, Message> repPropView;
+    private ArrayList<Integer> seemCrd;
 
     private boolean noCrd = false;
     private boolean imCrd = false;
 
 
-    public electMasterService(int networkNodes, ArrayList<Integer> nodeFailureDetector, ArrayList<Node> repliesArray ){
+    /*TODO: How do we start the leader election routine and how we get this structures? More messages? */
+    public electMasterService(int networkNodes, Map<Integer,Integer> nodeFailureDetector, ArrayList<Message> repliesArray, Map<Integer, Message> repliesArrayPropView ){
 
         numberOfNodes = networkNodes;
         failureDetector = nodeFailureDetector;
-        rep = repliesArray;
-
         quorum = numberOfNodes/2;
+
+        rep = repliesArray;
+        repPropView = repliesArrayPropView;
 
     }
 
     public void findPossibleMasters(){
 
-        seemCrd = new ArrayList<Node>();
+        seemCrd = new ArrayList<>(numberOfNodes);
 
-        for (Node n : rep){
+        for (Message m : rep){
 
-            View nodeView = n.getLocalView();
+            View nodeView = m.getView();
+            nodeView.setArrayFromValueString(); //now I have all the ids in the view array
 
+            Message curr = repPropView.get(m.getSenderId());
 
-            //if ((n.getCm().getFD().calculateActiveNodes() > quorum) &&  nodeView.getIdArray().size() > quorum && isContained(n))
-            seemCrd.add(n);
+            View propView = curr.getView();
+            propView.setArrayFromValueString();
+
+            //isContained checks if the sender of the proposed view is contained in each View of the nodes in his proposedView
+            if ((nodeView.getIdArray().size() > quorum) &&  propView.getIdArray().size() > quorum && isContained(curr.getSenderId(), propView))
+                seemCrd.add(m.getSenderId());
         }
 
         if (seemCrd.isEmpty() || seemCrd == null) noCrd = true;
+        proposeMaster();
 
     }
 
@@ -58,81 +70,64 @@ public class electMasterService {
         findPossibleMasters();
 
         if (!noCrd) {
-            //ArrayList<Node> sortedSeemCrd = sortNodeById(seemCrd);
-            //masterId = sortedSeemCrd.get(0).getId();
+
+            seemCrd.sort(new Comparator<Integer>() {
+                @Override
+                public int compare(Integer o1, Integer o2) {
+                    return o1.compareTo(o2);
+                }
+            });
+        }
+        masterId = seemCrd.get(0);
+        electMaster(masterId);
+
+    }
+
+
+
+    //TODO: broadcast new elected correct master and return with the id to node code
+    public int electMaster(int mId){
+
+        //TODO: Build ad-hoc message to propose master and wait for quorum (communicate like)
+        /*  TODO: Problem -> how to respond to a node that proposes a master? We should check if the proposed master is in the local seemCrd list
+                and respond yes/no and then wait again if that node receives a majority and the confirmation that yes he's the master (like a write operation)
+                */
+
+
+
+
+
+    return 0;
+    }
+
+
+
+    private boolean isContained (int l, View pView){
+
+
+        //for each nodeID in the propView
+        for(int i : pView.getIdArray()){
+
+            Message m = rep.get(i);
+            View v = m.getView();
+            v.setArrayFromValueString();
+
+            //Check if l is in the view (list of active nodes of node i)
+            if (v.getIdArray().contains(l))
+                return true;
+
+
+
         }
 
-        /*should be implemented in node code
-        if (masterId == getId()) imCrd = true;*/
 
+        return false;
     }
 
 
 
-    //TODO: broadcast new elected correct master
-    public void electMaster(){
-
-        // if I'm the master send proposed view with new counter and wait for ack, if I'm not wait for message and send ack
-        if(imCrd) {
-
-            //inc counter
-            //send message
-
-        } else {
-
-            //wait for message
-
-        }
 
 
-    }
-
-
-
-    private boolean isContained (Node l){
-
-        //TODO: implement method to check if the node is contained in the active node list (FD)
-        /* int id = l.getId();
-            int count = 0;
-            ArrayList<Integer> currentPropView = l.getProposedView()
-
-            for (Node k : currentPropView) {
-
-                if (k.getCounter().contains(l)) count++;
-
-
-            }
-
-        if (count == currentPropView.size) return failureDetector.contains(id);
-        else return false;*/
-
-
-        return true;
-    }
-
-
-    /*
-    private ArrayList<Node> sortNodeById(ArrayList<Node> list){
-
-        ArrayList<Node> sortedNodes = (ArrayList)list.clone();
-        sortedNodes.sort(new Comparator<Node>() {
-            @Override
-            public int compare(Node o1, Node o2) {
-                if (o1.isMaster() && !o2.isMaster()) {
-                    return -1;
-                }
-                if (!o1.isMaster() && o2.isMaster()) {
-                    return 1;
-                }
-                //return negative value if id2 is bigger than id1
-                return o1.getId()- o2.getId();
-
-            }
-        });
-        return sortedNodes;
-
-    }
-    */
 
 
 }
