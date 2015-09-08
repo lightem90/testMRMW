@@ -4,10 +4,15 @@ package electMasterService;
  * Created by Matteo on 13/07/2015.
  */
 
+import NetworkPrimitives.ConnectionManager;
 import Structures.Message;
 import com.robustMRMW.Node;
 import Structures.View;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Map;
@@ -22,6 +27,11 @@ public class electMasterService {
     private ArrayList<Message> rep;
     private Map<Integer, Message> repPropView;
     private ArrayList<Integer> seemCrd;
+    private ArrayList<SocketChannel> chan;
+    private int serverCount;
+    private ByteBuffer writeBuffer = ByteBuffer.allocate(1024);
+    private ByteBuffer readBuffer = ByteBuffer.allocate(1024);
+
 
     private boolean noCrd = false;
     private boolean imCrd = false;
@@ -30,7 +40,7 @@ public class electMasterService {
     /*TODO: How do we start the leader election routine and how we get this structures? More messages? */
     /*TOREPLY: leader election starts when the failure detector says the current leader is dead*/
 
-    public electMasterService(int networkNodes, Map<Integer,Integer> nodeFailureDetector, ArrayList<Message> repliesArray, Map<Integer, Message> repliesArrayPropView ){
+    public electMasterService(ConnectionManager cm, int networkNodes, Map<Integer,Integer> nodeFailureDetector, ArrayList<Message> repliesArray, Map<Integer, Message> repliesArrayPropView ){
 
         numberOfNodes = networkNodes;
         failureDetector = nodeFailureDetector;
@@ -39,6 +49,8 @@ public class electMasterService {
         rep = repliesArray;
         repPropView = repliesArrayPropView;
 
+        chan = cm.getServerChannels();
+        serverCount = cm.getServerCount();
     }
 
     public void findPossibleMasters(){
@@ -65,19 +77,61 @@ public class electMasterService {
 
     }
 
-    //TODO: method to send the possible master suggestion to all active nodes
-    //TOREPLY: nothing to send, once the leader is chosen "we know" that everyone else has made the same choice
     public void proposeMaster(){
 
         int masterId = -1;
 
         if(noCrd){
            /*
-           * for every node in my FD that has ME in their FD, count those that have the noCrd set to true TODO: have to send noCrd somehow
+           * for every node in my FD that has ME in their FD, count those that have the noCrd set to true
            * if these nodes with noCrd reach a quorum, I propose my FD as View (acting like a leader ??)
            * */
+
+
+            //Send "noCrd" to everyone letting them know that we have no coordinator
+            writeBuffer.clear();
+            writeBuffer.put("noCrd".getBytes());
+
+            for (int i = 0; i < serverCount; i++) {
+
+                try {
+
+                    writeBuffer.flip();
+                    while (writeBuffer.hasRemaining())
+                        chan.get(i).write(writeBuffer);
+
+                } catch (IOException e) {
+                    //if write fails it means that the channel has been closed so we cannot write to it
+                    //should remove channel (???)
+                }
+            }
+
+            //Start receiving other nodes' "noCrd" and count them until quorum is reached
+            int counter=0;
+            while (counter < serverCount / 2 + 1) {
+                for (int i = 0; i < serverCount; i++) {
+                    readBuffer.clear();
+                    String message = "";
+                    try {
+
+                        while (chan.get(i).read(readBuffer) > 0) {
+                            // flip the buffer to start reading
+                            readBuffer.flip();
+                            message += Charset.defaultCharset().decode(
+                                    readBuffer);
+                        }
+
+                        if (message.equals("noCrd"))
+                            counter++;
+
+                    } catch (IOException e) {
+                        //if write fails it means that the channel has been closed so we cannot write to it
+                        //should remove channel (???)
+                    }
+                }
+            }
         }
-        else{
+        else {
             seemCrd.sort(new Comparator<Integer>() {
                 @Override
                 public int compare(Integer o1, Integer o2) {
@@ -87,24 +141,26 @@ public class electMasterService {
             masterId = seemCrd.get(0);
         }
 
+        //TODO: up to now, the noCrd part of the code does not change masterId, but simply leaves it to -1 and arrives here only if quorum is reached. This should not be the final solution
         electMaster(masterId);
 
     }
 
-
-
-    //TODO: broadcast new elected correct master and return with the id to node code
-    //TOREPLY: again, nothing has to be sent. Only the leader sends things IF he wants to. #BIGDICKLEADERS
     public int electMaster(int mId){
 
-        //TODO: Build ad-hoc message to propose master and wait for quorum (communicate like)
-        /*  TODO: Problem -> how to respond to a node that proposes a master? We should check if the proposed master is in the local seemCrd list
-                and respond yes/no and then wait again if that node receives a majority and the confirmation that yes he's the master (like a write operation)
-                */
-
-
-
-
+        if(mId == -1){
+            //noCrd must be true and quorum was reached between servers
+            //should send my view to everyone and let the dicks sort themselves out
+        }
+        else{
+            //real master was elected, WOW
+            if(imCrd)
+                //I'm the leader, decide what to do
+            ;
+            else
+                //do nothing
+            ;
+        }
 
     return 0;
     }
