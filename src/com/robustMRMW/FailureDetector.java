@@ -16,6 +16,7 @@ public class FailureDetector {
     private static final int MAXIMUM_HEARTBEAT_VALUE = 50;
     private HashMap<Integer,Integer> activeNodes;
     Node current;
+    int leader_id;
 
 
 
@@ -24,6 +25,7 @@ public class FailureDetector {
 
         activeNodes = new HashMap<>(ids.size());
         current = n;
+        leader_id = -1;
 
         updateNodeLocalView();
 
@@ -31,8 +33,6 @@ public class FailureDetector {
 
     /* reset counter of node with id n to zero updating all the other ones (the i) */
     public void updateFDForNode(int n) {
-
-        //TODO: add checks on the id
         boolean flag = false;
 
         //Signaling a modification to activeNode as occurred (because n is not in the activeNode list)
@@ -48,7 +48,8 @@ public class FailureDetector {
 
         while (it.hasNext()) {
             int i = it.next();
-            if (!(i == n)){
+            //in the active nodes I consider myself as well (needed in leader election for views comparison)
+            if (!(i == n) && !(i==current.getMySett().getNodeId())){
             //checking with heartbeat, if it gets too big I remove the node (counting it as inactive)
             int newVal = activeNodes.get(i)+1;
 
@@ -57,7 +58,12 @@ public class FailureDetector {
             else {
                 it.remove();
                 activeNodes.remove(i);
-                flag = true;
+                if (i == leader_id){
+                    System.out.println("Leader has gone offline");
+                    leader_id = -1;
+                }
+
+                    flag = true;
                  }
             }
 
@@ -99,6 +105,15 @@ public class FailureDetector {
 
     public HashMap<Integer, Integer> getActiveNodes() {
         return activeNodes;
+    }
+
+
+    public int getLeader_id() {
+        return leader_id;
+    }
+
+    public void setLeader_id(int leader_id) {
+        this.leader_id = leader_id;
     }
 
 

@@ -16,19 +16,21 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Map;
+import java.util.Set;
 
 //as stated in the paper, probably we have to implement other messages to implement the election procedure (acknowledge of missing master for example)
 //moreover we should keep for each server the last message from it into a list, in this way we can retrieve its id and view, OR asking from it again with more messages
 public class electMasterService {
 
-    private int quorum;
-    private int numberOfNodes;
+
     private Map<Integer,Integer> failureDetector;
-    private ArrayList<Message> rep;
-    private Map<Integer, Message> repPropView;
+    private Map<Integer, Message> rep;
     private ArrayList<Integer> seemCrd;
     private ArrayList<SocketChannel> chan;
+
     private int serverCount;
+    private int mId;
+    private View view;
     private ByteBuffer writeBuffer = ByteBuffer.allocate(1024);
     private ByteBuffer readBuffer = ByteBuffer.allocate(1024);
 
@@ -37,39 +39,35 @@ public class electMasterService {
     private boolean imCrd = false;
 
 
-    /*TODO: How do we start the leader election routine and how we get this structures? More messages? */
-    /*TOREPLY: leader election starts when the failure detector says the current leader is dead*/
+    /*TODO: Where do we detect current leader is dead? */
 
-    public electMasterService(ConnectionManager cm, int networkNodes, Map<Integer,Integer> nodeFailureDetector, ArrayList<Message> repliesArray, Map<Integer, Message> repliesArrayPropView ){
+    public electMasterService(View localView, ConnectionManager cm, Map<Integer,Integer> nodeFailureDetector){
 
-        numberOfNodes = networkNodes;
         failureDetector = nodeFailureDetector;
-        quorum = numberOfNodes/2;
-
-        rep = repliesArray;
-        repPropView = repliesArrayPropView;
+        view = localView;
+        rep = cm.getReplica();
 
         chan = cm.getServerChannels();
         serverCount = cm.getServerCount();
+
     }
 
     public void findPossibleMasters(){
 
-        seemCrd = new ArrayList<>(numberOfNodes);
+        seemCrd = new ArrayList<>(serverCount);
+        int quorum = serverCount/2;
+        Set<Integer> idList = failureDetector.keySet();
 
-        for (Message m : rep){
+        for (Integer l : idList){
 
+            //Getting all the information about active node l (Last message with proper view received)
+            Message m = rep.get(l);
             View nodeView = m.getView();
-            nodeView.setArrayFromValueString(); //now I have all the ids in the view array
+            nodeView.setArrayFromValueString();
 
-            Message curr = repPropView.get(m.getSenderId());
-
-            View propView = curr.getView();
-            propView.setArrayFromValueString();
-
-            //isContained checks if the sender of the proposed view is contained in each View of the nodes in his proposedView
-            if ((nodeView.getIdArray().size() > quorum) &&  propView.getIdArray().size() > quorum && isContained(curr.getSenderId(), propView))
-                seemCrd.add(m.getSenderId());
+            //isContained checks if l has a quorum for his view and if he is contained in each view of the nodes of his view (can't check proposed view and FD since we don't have replicas)
+            if ((nodeView.getIdArray().size() > quorum) && isContained(nodeView, l))
+                seemCrd.add(l);
         }
 
         if (seemCrd == null || seemCrd.isEmpty()) noCrd = true;
@@ -146,7 +144,7 @@ public class electMasterService {
 
     }
 
-    public int electMaster(int mId){
+    private int electMaster(int mId){
 
         if(mId == -1){
             //noCrd must be true and quorum was reached between servers
@@ -167,22 +165,19 @@ public class electMasterService {
 
 
 
-    private boolean isContained (int l, View pView){
+    private boolean isContained (View mView, int id){
 
 
         //for each nodeID in the propView
-        for(int i : pView.getIdArray()){
+        for(int i : mView.getIdArray()){
 
             Message m = rep.get(i);
             View v = m.getView();
             v.setArrayFromValueString();
 
-            //Check if l is in the view (list of active nodes of node i)
-            if (v.getIdArray().contains(l))
+            //Check if mId is in the view (list of active nodes of node i)
+            if (v.getIdArray().contains(id))
                 return true;
-
-
-
         }
 
 

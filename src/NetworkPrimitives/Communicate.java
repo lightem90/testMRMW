@@ -195,7 +195,7 @@ public class Communicate {
 					}
 
 					//updating FD
-					caller.getFD().updateFDForNode(reply.getSenderId());
+					n.getFD().updateFDForNode(reply.getSenderId());
 
 
 					//handling older messages
