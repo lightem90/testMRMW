@@ -24,6 +24,7 @@ public class FailureDetector {
     public FailureDetector(ArrayList<Integer>ids, Node n){
 
         activeNodes = new HashMap<>(ids.size());
+        activeNodes.put(n.getMySett().getNodeId(), 0);
         current = n;
         leader_id = -1;
 

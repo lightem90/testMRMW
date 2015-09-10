@@ -72,16 +72,25 @@ public class ConnectionManager {
         otherNodesAddress = new ArrayList<InetSocketAddress>();
         serverChannels = new ArrayList<>();
 
-        /* We manually write the file
+        Selector socketSelector = null;
         try {
-
-            Selector socketSelector = Selector.open();
+            socketSelector = Selector.open();
             ServerSocketChannel serverChannel = ServerSocketChannel.open();
             serverChannel.configureBlocking(false);
             serverChannel.socket().bind(hostAddress);
             hostAddress = serverChannel.getLocalAddress();
             serverChannel.register(socketSelector, SelectionKey.OP_ACCEPT);
             selector = socketSelector;
+        } catch (IOException e) {
+            System.out.println("Cannot initialize selector");
+            e.printStackTrace();
+        }
+
+
+        /* We manually write the file
+        try {
+
+
 
             // writing local address to file
             Path filePath = Paths.get(ADDRESS_PATH);
@@ -109,7 +118,6 @@ public class ConnectionManager {
             // read addresses from file
             Path filePath = Paths.get(ADDRESS_PATH);
             List<String> lines = Files.readAllLines(filePath);
-            ids = new ArrayList<>(lines.size());
 
             // for each line if it's not my port I'll add the address to the array of addresses
             for (i = 0; i < lines.size(); i++) {
@@ -120,14 +128,10 @@ public class ConnectionManager {
 
                 if (!tokens[1].equals(hostAddress.toString())) {
                     otherNodesAddress.add(getAddressFromString(tokens[1]));
-                    System.out.println("Adding node with id to Failure Detector: " + tokens[0]);
+                    System.out.println("Adding node with id:" + tokens[0] +" to Failure Detector: " );
                     ids.add(Integer.parseInt(tokens[0]));
                 }
             }
-
-            //initializing failure detector with data read from file
-
-
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -164,7 +168,8 @@ public class ConnectionManager {
 
         Message init = new Message("init", new Tag(-1,-1,-1), new View(""), n.getMySett().getNodeId());
         for (SocketChannel ch : serverChannels)
-            sendMessage(ch,init);
+            if(ch.isConnected())
+                sendMessage(ch,init);
 
 
     }
@@ -306,7 +311,6 @@ public class ConnectionManager {
                     }
 
                     serverCount++;
-                    n.getMySett().setQuorum(serverCount / 2);
                     serverChannels.add(channelToAdd);
 
 
@@ -318,8 +322,6 @@ public class ConnectionManager {
                     Tag leader = new Tag(l_id, l_id, l_id);
 
                     Message init = new Message("init_ack", leader, new View(""), n.getMySett().getNodeId());
-
-
                     sendMessage(channelToAdd,init);
 
                 } catch (IOException e) {

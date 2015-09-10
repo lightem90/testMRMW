@@ -25,7 +25,6 @@ public class Main {
                     NetworkPrimitives.Settings init = new Settings(Integer.parseInt(args[1]), Integer.parseInt(args[2]));
                     Node n = new Node(init);
                     n.setup();
-                    //TODO: before running we have to be sure that a quorum is possible
                     n.run();
                 } else {
 

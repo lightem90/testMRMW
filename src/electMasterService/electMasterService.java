@@ -54,16 +54,18 @@ public class electMasterService {
         seemCrd = new ArrayList<>(mSet.getNumberOfNodes());
         Set<Integer> idList = failureDetector.keySet();
 
-        for (Integer l : idList){
+        for (Integer l : idList) {
 
             //Getting all the information about active node l (Last message with proper view received)
-            Message m = rep.get(l);
-            View nodeView = m.getView();
-            nodeView.setArrayFromValueString();
+            if (rep.containsKey(l)) {
+                Message m = rep.get(l);
+                View nodeView = m.getView();
+                nodeView.setArrayFromValueString();
 
-            //isContained checks if l has a quorum for his view and if he is contained in each view of the nodes of his view (can't check proposed view and FD since we don't have replicas)
-            if ((nodeView.getIdArray().size() > mSet.getQuorum()) && isContained(nodeView, l))
-                seemCrd.add(l);
+                //isContained checks if l has a quorum for his view and if he is contained in each view of the nodes of his view (can't check proposed view and FD since we don't have replicas)
+                if ((nodeView.getIdArray().size() > mSet.getQuorum()) && isContained(nodeView, l))
+                    seemCrd.add(l);
+            }
         }
 
         if (seemCrd == null || seemCrd.isEmpty()) noCrd = true;

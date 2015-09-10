@@ -44,7 +44,7 @@ public class Node {
         //retrieving the array of server ids
         ArrayList<Integer> ids = cm.init();
         mySett.setNumberOfNodes(ids.size());
-        mySett.setQuorum(ids.size()/2);
+        mySett.setQuorum((ids.size()/2)+1);
         FD = new FailureDetector(ids,this);
 
         System.out.println("Setting up node in system with: " + mySett.getNumberOfNodes() + " nodes, " + mySett.getQuorum() + " quorum");
@@ -65,22 +65,23 @@ public class Node {
     public void run(){
 
 
-        if(FD.getActiveNodes().size() < mySett.getQuorum())
+        while(true) {
+            if (FD.getActiveNodes().size() < mySett.getQuorum())
 
-            cm.waitForQuorum();
+                cm.waitForQuorum();
 
 
-        else {
+            else {
 
-            if (FD.getLeader_id() == -1) {
-                System.out.println("Master is not present in the system, starting leader election routine");
-                electMasterService election = new electMasterService(mySett,localView, cm, FD.getActiveNodes());
-                election.electMaster();
-            }
-
-            else
-                System.out.println("Master is: " + FD.getLeader_id() + ".");
+                if (FD.getLeader_id() == -1) {
+                    System.out.println("Master is not present in the system, starting leader election routine");
+                    electMasterService election = new electMasterService(mySett, localView, cm, FD.getActiveNodes());
+                    election.electMaster();
+                } else
+                    System.out.println("Master is: " + FD.getLeader_id() + ".");
                 cm.run();
+                break;
+            }
         }
 
 
