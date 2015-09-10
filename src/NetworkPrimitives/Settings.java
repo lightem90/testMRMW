@@ -13,6 +13,8 @@ public class Settings {
 
     private int port;
     private int nodeId;
+    private int quorum;
+    private int numberOfNodes;
 
     public Settings(int n, int p){
 
@@ -40,6 +42,22 @@ public class Settings {
 
     public void setNodeId(int nodeId) {
         this.nodeId = nodeId;
+    }
+
+    public int getQuorum() {
+        return quorum;
+    }
+
+    public void setQuorum(int quorum) {
+        this.quorum = quorum;
+    }
+
+    public int getNumberOfNodes() {
+        return numberOfNodes;
+    }
+
+    public void setNumberOfNodes(int numberOfNodes) {
+        this.numberOfNodes = numberOfNodes;
     }
 
 

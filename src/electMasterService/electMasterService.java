@@ -5,8 +5,8 @@ package electMasterService;
  */
 
 import NetworkPrimitives.ConnectionManager;
+import NetworkPrimitives.Settings;
 import Structures.Message;
-import com.robustMRMW.Node;
 import Structures.View;
 
 import java.io.IOException;
@@ -28,34 +28,30 @@ public class electMasterService {
     private ArrayList<Integer> seemCrd;
     private ArrayList<SocketChannel> chan;
 
-    private int serverCount;
-    private int mId;
     private View view;
+    private Settings mSet;
     private ByteBuffer writeBuffer = ByteBuffer.allocate(1024);
     private ByteBuffer readBuffer = ByteBuffer.allocate(1024);
 
 
     private boolean noCrd = false;
-    private boolean imCrd = false;
 
 
     /*TODO: Where do we detect current leader is dead? */
 
-    public electMasterService(View localView, ConnectionManager cm, Map<Integer,Integer> nodeFailureDetector){
+    public electMasterService(Settings currentSettings, View localView, ConnectionManager cm, Map<Integer,Integer> nodeFailureDetector){
 
         failureDetector = nodeFailureDetector;
         view = localView;
         rep = cm.getReplica();
-
+        mSet = currentSettings;
         chan = cm.getServerChannels();
-        serverCount = cm.getServerCount();
 
     }
 
-    public void findPossibleMasters(){
+    public void electMaster(){
 
-        seemCrd = new ArrayList<>(serverCount);
-        int quorum = serverCount/2;
+        seemCrd = new ArrayList<>(mSet.getNumberOfNodes());
         Set<Integer> idList = failureDetector.keySet();
 
         for (Integer l : idList){
@@ -66,7 +62,7 @@ public class electMasterService {
             nodeView.setArrayFromValueString();
 
             //isContained checks if l has a quorum for his view and if he is contained in each view of the nodes of his view (can't check proposed view and FD since we don't have replicas)
-            if ((nodeView.getIdArray().size() > quorum) && isContained(nodeView, l))
+            if ((nodeView.getIdArray().size() > mSet.getQuorum()) && isContained(nodeView, l))
                 seemCrd.add(l);
         }
 
@@ -90,7 +86,7 @@ public class electMasterService {
             writeBuffer.clear();
             writeBuffer.put("noCrd".getBytes());
 
-            for (int i = 0; i < serverCount; i++) {
+            for (int i = 0; i < mSet.getNumberOfNodes(); i++) {
 
                 try {
 
@@ -106,8 +102,8 @@ public class electMasterService {
 
             //Start receiving other nodes' "noCrd" and count them until quorum is reached
             int counter=0;
-            while (counter < serverCount / 2 + 1) {
-                for (int i = 0; i < serverCount; i++) {
+            while (counter <  mSet.getNumberOfNodes() / 2 + 1) {
+                for (int i = 0; i <  mSet.getNumberOfNodes(); i++) {
                     readBuffer.clear();
                     String message = "";
                     try {
@@ -140,11 +136,11 @@ public class electMasterService {
         }
 
         //TODO: up to now, the noCrd part of the code does not change masterId, but simply leaves it to -1 and arrives here only if quorum is reached. This should not be the final solution
-        electMaster(masterId);
+        handleMasterId(masterId);
 
     }
 
-    private int electMaster(int mId){
+    private int handleMasterId(int mId){
 
         if(mId == -1){
             //noCrd must be true and quorum was reached between servers
@@ -152,7 +148,7 @@ public class electMasterService {
         }
         else{
             //real master was elected, WOW
-            if(imCrd)
+            if(mId == mSet.getNodeId())
                 //I'm the leader, decide what to do
             ;
             else

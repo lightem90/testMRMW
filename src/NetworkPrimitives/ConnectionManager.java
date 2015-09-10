@@ -55,8 +55,6 @@ public class ConnectionManager {
     // Initialization
     public ConnectionManager(Node c){
 
-
-        System.out.println("Setting up node with id: " + c.getMySett().getNodeId() + " and port: " + c.getMySett().getPort());
         hostAddress = new InetSocketAddress(ADDRESS,c.getMySett().getPort());
         rep = new HashMap<>();
         ED = new EncDec();
@@ -74,8 +72,7 @@ public class ConnectionManager {
         otherNodesAddress = new ArrayList<InetSocketAddress>();
         serverChannels = new ArrayList<>();
 
-        System.out.println("Initializing server node");
-
+        /* We manually write the file
         try {
 
             Selector socketSelector = Selector.open();
@@ -100,6 +97,8 @@ public class ConnectionManager {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        */
 
 
         ArrayList<Integer> ids = new ArrayList<>();
@@ -133,14 +132,13 @@ public class ConnectionManager {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        //returns an array with the ids of all nodes in the network (read from address.txt file). The quorum is ids.size()/2
         return ids;
     }
 
     /* Connecting to all other nodes */
     public void connect() throws IOException {
-
-        System.out.println(n.getMySett().getNodeId() + " Connecting to existing nodes");
-
 
         for (InetSocketAddress address : otherNodesAddress) {
 
@@ -176,7 +174,7 @@ public class ConnectionManager {
 
         System.out.println("Waiting for connections...");
 
-        while (n.getFD().getActiveNodes().size() < n.getQuorum()){
+        while (n.getFD().getActiveNodes().size() < n.getMySett().getQuorum()){
 
             try {
                 // listening for connections, initializes the selector with all
@@ -251,6 +249,11 @@ public class ConnectionManager {
                         break;
 
                     case "init_ack":
+                        if (receivedMessage.getTag().getId() == -1 && receivedMessage.getTag().getLabel() == -1)
+                            //no leader is present, just warning
+                            System.out.println("No leader present in the system");
+
+                        n.getFD().setLeader_id(receivedMessage.getTag().getId());
                         n.getFD().updateFDForNode(receivedMessage.getSenderId());
                         break;
                 }
@@ -303,15 +306,20 @@ public class ConnectionManager {
                     }
 
                     serverCount++;
-                    n.setQuorum(serverCount/2);
+                    n.getMySett().setQuorum(serverCount / 2);
                     serverChannels.add(channelToAdd);
 
 
                     if(channelToAdd.isConnectionPending())
                         channelToAdd.finishConnect();
 
+                    //if in some way I know the leader id, I send it as ack to a newly connected node
+                    int l_id = n.getFD().getLeader_id();
+                    Tag leader = new Tag(l_id, l_id, l_id);
 
-                    Message init = new Message("init_ack", new Tag(-1,-1,-1), new View(""), n.getMySett().getNodeId());
+                    Message init = new Message("init_ack", leader, new View(""), n.getMySett().getNodeId());
+
+
                     sendMessage(channelToAdd,init);
 
                 } catch (IOException e) {
@@ -580,6 +588,7 @@ public class ConnectionManager {
     //Utilities
 
     private InetSocketAddress getAddressFromString(String line) {
+
         line = line.replace("/", "");
         line = line.replace(":", " ");
         String[] splitted = line.split(" ");

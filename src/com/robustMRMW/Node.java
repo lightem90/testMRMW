@@ -22,8 +22,6 @@ public class Node {
 
 
     private boolean isMaster;
-    private int quorum;
-    private int numberOfNodes;
 
 
     /* Constructor with custom settings */
@@ -45,13 +43,14 @@ public class Node {
 
         //retrieving the array of server ids
         ArrayList<Integer> ids = cm.init();
-        numberOfNodes = ids.size();
-        quorum = numberOfNodes /2;
+        mySett.setNumberOfNodes(ids.size());
+        mySett.setQuorum(ids.size()/2);
         FD = new FailureDetector(ids,this);
+
+        System.out.println("Setting up node in system with: " + mySett.getNumberOfNodes() + " nodes, " + mySett.getQuorum() + " quorum");
+
         try {
-
             //TODO: cm should retrieve leader_id if it is present somewhere
-
             cm.connect();
         } catch (IOException e){
 
@@ -66,7 +65,7 @@ public class Node {
     public void run(){
 
 
-        if(FD.getActiveNodes().size() < quorum)
+        if(FD.getActiveNodes().size() < mySett.getQuorum())
 
             cm.waitForQuorum();
 
@@ -74,11 +73,13 @@ public class Node {
         else {
 
             if (FD.getLeader_id() == -1) {
-                electMasterService election = new electMasterService(localView, cm, FD.getActiveNodes());
+                System.out.println("Master is not present in the system, starting leader election routine");
+                electMasterService election = new electMasterService(mySett,localView, cm, FD.getActiveNodes());
+                election.electMaster();
             }
 
             else
-                //usual run
+                System.out.println("Master is: " + FD.getLeader_id() + ".");
                 cm.run();
         }
 
@@ -151,21 +152,6 @@ public class Node {
     }
 
 
-    public int getQuorum() {
-        return quorum;
-    }
-
-    public void setQuorum(int quorum) {
-        this.quorum = quorum;
-    }
-
-    public int getNumberOfNodes() {
-        return numberOfNodes;
-    }
-
-    public void setNumberOfNodes(int numberOfNodes) {
-        this.numberOfNodes = numberOfNodes;
-    }
 
 
     public ConnectionManager getCm() {
