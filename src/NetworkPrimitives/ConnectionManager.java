@@ -71,6 +71,7 @@ public class ConnectionManager {
 
         otherNodesAddress = new ArrayList<InetSocketAddress>();
         serverChannels = new ArrayList<>();
+        replica = new HashMap<>();
 
         Selector socketSelector = null;
         try {
@@ -128,7 +129,7 @@ public class ConnectionManager {
 
                 if (!tokens[1].equals(hostAddress.toString())) {
                     otherNodesAddress.add(getAddressFromString(tokens[1]));
-                    System.out.println("Adding node with id:" + tokens[0] +" to Failure Detector: " );
+                    System.out.println("Adding node with id:" + tokens[0] +" to Failure Detector" );
                     ids.add(Integer.parseInt(tokens[0]));
                 }
             }
@@ -166,7 +167,7 @@ public class ConnectionManager {
         //initializing communicate
         comm = new NetworkPrimitives.Communicate(n,this);
 
-        Message init = new Message("init", new Tag(-1,-1,-1), new View(""), n.getMySett().getNodeId());
+        Message init = new Message("init", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId());
         for (SocketChannel ch : serverChannels)
             if(ch.isConnected())
                 sendMessage(ch,init);
@@ -250,6 +251,7 @@ public class ConnectionManager {
                         //update FD, serverChannels and serverCount
                         handleConnectionRequest(key,receivedMessage);
                         n.getFD().updateFDForNode(receivedMessage.getSenderId());
+                        replica.put(receivedMessage.getSenderId(),receivedMessage);
                         comm = new Communicate(n,this);
                         break;
 
@@ -258,8 +260,10 @@ public class ConnectionManager {
                             //no leader is present, just warning
                             System.out.println("No leader present in the system");
 
+                        //Setting the leader Id from response, I don't check which value it has
                         n.getFD().setLeader_id(receivedMessage.getTag().getId());
                         n.getFD().updateFDForNode(receivedMessage.getSenderId());
+                        replica.put(receivedMessage.getSenderId(),receivedMessage);
                         break;
                 }
             }
@@ -321,7 +325,8 @@ public class ConnectionManager {
                     int l_id = n.getFD().getLeader_id();
                     Tag leader = new Tag(l_id, l_id, l_id);
 
-                    Message init = new Message("init_ack", leader, new View(""), n.getMySett().getNodeId());
+                    //sending as answer my local view (all the nodes my fd says are active
+                    Message init = new Message("init_ack", leader, n.getLocalView(), n.getMySett().getNodeId());
                     sendMessage(channelToAdd,init);
 
                 } catch (IOException e) {
@@ -341,7 +346,6 @@ public class ConnectionManager {
     public void run() {
 
         System.out.println("Running ...");
-        replica = new HashMap<>();
 
         while (true) {
             try {

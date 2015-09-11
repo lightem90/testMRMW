@@ -88,44 +88,58 @@ public class electMasterService {
             writeBuffer.clear();
             writeBuffer.put("noCrd".getBytes());
 
-            for (int i = 0; i < mSet.getNumberOfNodes(); i++) {
+            for (int i = 0; i < chan.size(); i++) {
 
                 try {
 
-                    writeBuffer.flip();
-                    while (writeBuffer.hasRemaining())
-                        chan.get(i).write(writeBuffer);
+                    if(!chan.get(i).isConnectionPending() && chan.get(i).isOpen()) {
+                        writeBuffer.flip();
+                        while (writeBuffer.hasRemaining()) {
+                            System.out.println("Sending noCrd to node: " + chan.get(i).getRemoteAddress());
+                            chan.get(i).write(writeBuffer);
+                        }
+                    }
 
                 } catch (IOException e) {
-                    //if write fails it means that the channel has been closed so we cannot write to it
-                    //should remove channel (???)
+                    System.out.println("Can't write to node");
                 }
             }
 
             //Start receiving other nodes' "noCrd" and count them until quorum is reached
-            int counter=0;
-            while (counter <  mSet.getNumberOfNodes() / 2 + 1) {
-                for (int i = 0; i <  mSet.getNumberOfNodes(); i++) {
+            int counter=0, i=0;
+            while (counter <  mSet.getQuorum()) {
+
                     readBuffer.clear();
                     String message = "";
                     try {
 
-                        while (chan.get(i).read(readBuffer) > 0) {
-                            // flip the buffer to start reading
-                            readBuffer.flip();
-                            message += Charset.defaultCharset().decode(
-                                    readBuffer);
+                        if(!chan.get(i).isConnectionPending() && chan.get(i).isOpen()) {
+                            while (chan.get(i).read(readBuffer) > 0) {
+                                // flip the buffer to start reading
+                                readBuffer.flip();
+                                message += Charset.defaultCharset().decode(
+                                        readBuffer);
+                            }
                         }
 
-                        if (message.equals("noCrd"))
+                        if (message.equals("noCrd")) {
+                            System.out.println("Read noCrd");
                             counter++;
+                        }
 
                     } catch (IOException e) {
                         //if write fails it means that the channel has been closed so we cannot write to it
                         //should remove channel (???)
                     }
+                i++;
+                if (i >= chan.size()){
+
+                    System.out.println("Network error, cannot read an answer from nodes");
+                    break;
+
                 }
             }
+            System.out.println("Quorum reached for noCrd");
         }
         else {
             seemCrd.sort(new Comparator<Integer>() {
@@ -146,7 +160,7 @@ public class electMasterService {
 
         if(mId == -1){
             //noCrd must be true and quorum was reached between servers
-            //should send my view to everyone and let the dicks sort themselves out
+            //TODO: should send my view to everyone and let the dicks sort themselves out
         }
         else{
             //real master was elected, WOW

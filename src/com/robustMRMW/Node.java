@@ -77,9 +77,13 @@ public class Node {
                     System.out.println("Master is not present in the system, starting leader election routine");
                     electMasterService election = new electMasterService(mySett, localView, cm, FD.getActiveNodes());
                     election.electMaster();
-                } else
-                    System.out.println("Master is: " + FD.getLeader_id() + ".");
-                cm.run();
+                    System.out.println("Master elected with id: "+ FD.getLeader_id());
+                }
+
+                if (FD.getActiveNodes().size() >= mySett.getQuorum()) {
+                    System.out.println("Run allowed with leader id: "+ FD.getLeader_id() +", quorum of " + FD.getActiveNodes().size()+" nodes and localView:" + localView.getValue());
+                    cm.run();
+                }
                 break;
             }
         }
