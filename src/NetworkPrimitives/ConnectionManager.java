@@ -40,7 +40,7 @@ public class ConnectionManager {
     private SocketAddress hostAddress;
     private Selector selector;
     private ArrayList<SocketChannel> serverChannels;
-    private ArrayList<InetSocketAddress> otherNodesAddress;
+    private Map<Integer,InetSocketAddress> otherNodesAddress;
     private Map<Tag, View> rep;
     private Map<Integer,Message> replica;
 
@@ -69,12 +69,13 @@ public class ConnectionManager {
     /* initialize and bind selector to current address / port */
     public ArrayList<Integer> init() {
 
-        otherNodesAddress = new ArrayList<InetSocketAddress>();
+        otherNodesAddress = new HashMap<>();
         serverChannels = new ArrayList<>();
         replica = new HashMap<>();
-
         Selector socketSelector = null;
+
         try {
+
             socketSelector = Selector.open();
             ServerSocketChannel serverChannel = ServerSocketChannel.open();
             serverChannel.configureBlocking(false);
@@ -82,37 +83,14 @@ public class ConnectionManager {
             hostAddress = serverChannel.getLocalAddress();
             serverChannel.register(socketSelector, SelectionKey.OP_ACCEPT);
             selector = socketSelector;
+
         } catch (IOException e) {
+
             System.out.println("Cannot initialize selector");
             e.printStackTrace();
         }
 
-
-        /* We manually write the file
-        try {
-
-
-
-            // writing local address to file
-            Path filePath = Paths.get(ADDRESS_PATH);
-            String toWrite = String.format(n.getMySett().getNodeId() + " " + serverChannel.getLocalAddress()
-                    + "%n");
-            System.out.println("The address of this node is: " + toWrite);
-
-            // writing the address of the new node on file so every other  node can connect to it
-            // TODO: should not write to file cause we create it manually or in the script?
-            Files.write(filePath, toWrite.getBytes(),
-                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        */
-
-
         ArrayList<Integer> ids = new ArrayList<>();
-        ids.add(n.getMySett().getNodeId());
 
         try {
             int i;
@@ -125,13 +103,9 @@ public class ConnectionManager {
 
                 String line = lines.get(i);
                 String[] tokens = line.split(" ");
-
-
-                if (!tokens[1].equals(hostAddress.toString())) {
-                    otherNodesAddress.add(getAddressFromString(tokens[1]));
-                    System.out.println("Adding node with id:" + tokens[0] +" to Failure Detector" );
-                    ids.add(Integer.parseInt(tokens[0]));
-                }
+                otherNodesAddress.put(Integer.parseInt(tokens[0]), getAddressFromString(tokens[1]));
+                ids.add(Integer.parseInt(tokens[0]));
+                serverCount = ids.size();
             }
 
         } catch (IOException e) {
@@ -145,33 +119,39 @@ public class ConnectionManager {
     /* Connecting to all other nodes */
     public void connect() throws IOException {
 
-        for (InetSocketAddress address : otherNodesAddress) {
+        Iterator i = otherNodesAddress.keySet().iterator();
+        SelectionKey key = null;
 
-            SocketChannel channelToAdd = SocketChannel.open();
-            channelToAdd.configureBlocking(false);
+        while(i.hasNext()){
+            int id = (int)i.next();
 
-            SocketAddress toAdd = address;
-            channelToAdd.connect(toAdd);
+            if (id != n.getMySett().getNodeId()) {
 
-            SelectionKey key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
-            serverCount++;
-            serverChannels.add(channelToAdd);
+                SocketAddress toAdd = otherNodesAddress.get(id);
+                SocketChannel channelToAdd = SocketChannel.open();
+                channelToAdd.configureBlocking(false);
+                channelToAdd.connect(toAdd);
+                key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
 
-            if(channelToAdd.isConnectionPending())
-                channelToAdd.finishConnect();
+                if (channelToAdd.isConnectionPending())
+                    channelToAdd.finishConnect();
+
+                //adding only connected channels and storing the other channels addresses in otherNodesAddress map in this way I shouldn't read the file ever again
+                if (channelToAdd.isConnected()) {
+                    serverChannels.add(channelToAdd);
+
+                }
+            }
 
         }
-
-
-
         //initializing communicate
         comm = new NetworkPrimitives.Communicate(n,this);
 
         Message init = new Message("init", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId());
-        for (SocketChannel ch : serverChannels)
-            if(ch.isConnected())
-                sendMessage(ch,init);
-
+        if (serverChannels.size() > 0) {
+            for (SocketChannel ch : serverChannels)
+                    sendMessage(ch, init);
+        }
 
     }
 
@@ -180,44 +160,43 @@ public class ConnectionManager {
 
         System.out.println("Waiting for connections...");
 
-        while (n.getFD().getActiveNodes().size() < n.getMySett().getQuorum()){
+        while (n.getFD().getActiveNodes().size() < n.getMySett().getQuorum()) {
 
-            try {
-                // listening for connections, initializes the selector with all
-                // socket ready for I/O operations
-                selector.select();
+            if (selector != null) {
+                try {
+                    // listening for connections, initializes the selector with all
+                    // socket ready for I/O operations
+                    selector.select();
 
-                Iterator<SelectionKey> selectedKeys = selector.selectedKeys()
-                        .iterator();
-                while (selectedKeys.hasNext()) {
+                    Iterator<SelectionKey> selectedKeys = selector.selectedKeys()
+                            .iterator();
+                    while (selectedKeys.hasNext()) {
 
-                    // for each element in the selector iterator
-                    SelectionKey key = selectedKeys.next();
-                    selectedKeys.remove();
+                        // for each element in the selector iterator
+                        SelectionKey key = selectedKeys.next();
+                        selectedKeys.remove();
 
-                    if (!key.isValid()) {
-                        // if a channel is closed we skip it
-                        continue;
+                        if (!key.isValid()) {
+                            // if a channel is closed we skip it
+                            continue;
+                        }
+
+
+                        if (key.isAcceptable()) {
+                            accept(key);
+                        } else if (key.isReadable()) {
+                            handleInit(key);
+                        } else if (key.isConnectable()) {
+                            finishConnection(key);
+                        }
                     }
 
-
-                    if (key.isAcceptable()) {
-                        accept(key);
-                    } else if (key.isReadable()) {
-                        handleInit(key);
-                    } else if (key.isConnectable()) {
-                        finishConnection(key);
-                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
 
-            } catch (Exception e) {
-                e.printStackTrace();
+
             }
-
-
-
-
-
         }
 
 
@@ -249,7 +228,7 @@ public class ConnectionManager {
                     //New messages to handle new server connection, init_ack is used only to update client FD, init connects the new client and updates communicate obj (chans, serverNumber etc..)
                     case "init":
                         //update FD, serverChannels and serverCount
-                        handleConnectionRequest(key,receivedMessage);
+                        handleConnectionRequest(key,receivedMessage.getSenderId());
                         n.getFD().updateFDForNode(receivedMessage.getSenderId());
                         replica.put(receivedMessage.getSenderId(),receivedMessage);
                         comm = new Communicate(n,this);
@@ -279,63 +258,40 @@ public class ConnectionManager {
     }
 
     /* this handles the case in which we receive a init message and we have to update the list of nodes addresses, channels and FD (and answering) */
-    private void handleConnectionRequest(SelectionKey k, Message m){
+    private void handleConnectionRequest(SelectionKey k, int id){
 
-        Path filePath = Paths.get(ADDRESS_PATH);
-        List<String> lines = null;
-        try {
+        //Getting the id
+        SocketAddress toAdd = null;
+        SocketChannel channelToAdd = null;
 
-            lines = Files.readAllLines(filePath);
-        } catch (IOException e) {
-            e.printStackTrace();
+        if (otherNodesAddress.containsKey(id) && (id != n.getMySett().getNodeId()))
+            toAdd = otherNodesAddress.get(id);
+        else {
+            System.out.println("Cannot detect newly connected node");
+            return;
         }
 
-        // for each line if it's not my port I'll add the address to the array of addresses
-        for (int i = 0; i < lines.size(); i++) {
+        try {
 
-            String line = lines.get(i);
-            String[] tokens = line.split(" ");
-            if (m.getSenderId() == Integer.parseInt(tokens[0])) {
-                if (!otherNodesAddress.contains(tokens[1]))
-                    otherNodesAddress.add(getAddressFromString(tokens[1]));
+            //no checks there shouldn't be problems while connecting to a requesting connection node
+            channelToAdd = SocketChannel.open();
+            channelToAdd.configureBlocking(false);
+            channelToAdd.connect(toAdd);
 
+            if(channelToAdd.isConnectionPending())
+                channelToAdd.finishConnect();
+            serverChannels.add(channelToAdd);
 
-                SocketChannel channelToAdd = null;
-                try {
+            //if in some way I know the leader id, I send it as ack to a newly connected node
+            int l_id = n.getFD().getLeader_id();
+            Tag leader = new Tag(l_id, l_id, l_id);
 
-                    channelToAdd = SocketChannel.open();
-                    channelToAdd.configureBlocking(false);
-                    channelToAdd.connect(getAddressFromString(tokens[1]));
+            //sending as answer my local view (all the nodes my fd says are active
+            Message init = new Message("init_ack", leader, n.getLocalView(), n.getMySett().getNodeId());
+            sendMessage(channelToAdd,init);
 
-
-                    try {
-                        SelectionKey key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
-                    } catch (ClosedChannelException e) {
-                        e.printStackTrace();
-                    }
-
-                    serverCount++;
-                    serverChannels.add(channelToAdd);
-
-
-                    if(channelToAdd.isConnectionPending())
-                        channelToAdd.finishConnect();
-
-                    //if in some way I know the leader id, I send it as ack to a newly connected node
-                    int l_id = n.getFD().getLeader_id();
-                    Tag leader = new Tag(l_id, l_id, l_id);
-
-                    //sending as answer my local view (all the nodes my fd says are active
-                    Message init = new Message("init_ack", leader, n.getLocalView(), n.getMySett().getNodeId());
-                    sendMessage(channelToAdd,init);
-
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-
-
-            }
-
+        } catch (IOException e) {
+            e.printStackTrace();
         }
 
 
