@@ -166,10 +166,10 @@ public class electMasterService {
             //real master was elected, WOW
             if(mId == mSet.getNodeId())
                 //I'm the leader, decide what to do
-            ;
+                System.out.println("Hi, I am node "+ mId +" and I am the boss");
             else
                 //do nothing
-            ;
+                System.out.println("Hi, I am node "+ mSet.getNodeId() +" and I think the boss should be"+ mId);
         }
 
     return 0;
