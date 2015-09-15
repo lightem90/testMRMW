@@ -156,11 +156,13 @@ public class ConnectionManager {
     }
 
     /*Method to wait that at least n/2+1 nodes are online */
+    /*TODO: We need a 3 way handshake to update correctly the view, the problem is that when I receive a init and I consider the quorum reached I don't answer with the last end_handshake message  */
     public void waitForQuorum(){
 
         System.out.println("Waiting for connections...");
+        boolean go = true;
 
-        while (n.getFD().getActiveNodes().size() < n.getMySett().getQuorum()) {
+        while ((n.getFD().getActiveNodes().size() < n.getMySett().getQuorum()) || go ) {
 
             if (selector != null) {
                 try {
@@ -185,7 +187,7 @@ public class ConnectionManager {
                         if (key.isAcceptable()) {
                             accept(key);
                         } else if (key.isReadable()) {
-                            handleInit(key);
+                            go = handleInit(key);
                         } else if (key.isConnectable()) {
                             finishConnection(key);
                         }
@@ -203,7 +205,7 @@ public class ConnectionManager {
 
     }
 
-    private void handleInit(SelectionKey key) throws IOException {
+    private boolean handleInit(SelectionKey key) throws IOException {
 
         readBuffer.clear();
         int count = 0;
@@ -225,16 +227,21 @@ public class ConnectionManager {
                 System.out.println("Received " + receivedMessage.getRequestType() + " from node #" + receivedMessage.getSenderId());
 
                 switch (receivedMessage.getRequestType()) {
-                    //New messages to handle new server connection, init_ack is used only to update client FD, init connects the new client and updates communicate obj (chans, serverNumber etc..)
+                    /*New messages to handle new server connection, init_ack is used only to update client FD, init connects the new client and updates communicate obj (chans, serverNumber etc..) */
                     case "init":
                         //update FD, serverChannels and serverCount
-                        handleConnectionRequest(key,receivedMessage.getSenderId());
                         n.getFD().updateFDForNode(receivedMessage.getSenderId());
                         replica.put(receivedMessage.getSenderId(),receivedMessage);
+                        handleConnectionRequest("init_ack",receivedMessage.getSenderId());
+                        /* TODO: Quando un altro nodo si connette dobbiamo aggiornare la copia locale della nostra view (in replica) negli altri nodi updateOthersView(receivedMessage.getSenderId()); */
+                        /* TODO: abbiamo 2 modi per farlo: o ogni nodo aggiorna la view degli altri sperando che tutti abbiano ricevuto lo stesso init, oppure rimandiamo init quando riceviamo un init*/
+                        /* TODO: spero davvero che si capisca */
                         comm = new Communicate(n,this);
-                        break;
+                        //return false because I have to wait the end_handshake message
+                        return true;
 
                     case "init_ack":
+
                         if (receivedMessage.getTag().getId() == -1 && receivedMessage.getTag().getLabel() == -1)
                             //no leader is present, just warning
                             System.out.println("No leader present in the system");
@@ -243,7 +250,15 @@ public class ConnectionManager {
                         n.getFD().setLeader_id(receivedMessage.getTag().getId());
                         n.getFD().updateFDForNode(receivedMessage.getSenderId());
                         replica.put(receivedMessage.getSenderId(),receivedMessage);
-                        break;
+                        handleConnectionRequest("end_handshake",receivedMessage.getSenderId());
+                        return true;
+
+                    /*Need this to send correct view to older node (with init I send the view with only me active */
+                    case "end_handshake":
+                        System.out.println("Updating view for newly connected node");
+                        n.getFD().updateFDForNode(receivedMessage.getSenderId());
+                        replica.put(receivedMessage.getSenderId(),receivedMessage);
+                        return false;
                 }
             }
         }
@@ -251,14 +266,15 @@ public class ConnectionManager {
             System.out.println("Server crashed, keep executing");
             channel.close();
             key.cancel();
-            return;
+            return true;
         }
 
+        return true;
 
     }
 
     /* this handles the case in which we receive a init message and we have to update the list of nodes addresses, channels and FD (and answering) */
-    private void handleConnectionRequest(SelectionKey k, int id){
+    private void handleConnectionRequest(String type, int id){
 
         //Getting the id
         SocketAddress toAdd = null;
@@ -280,15 +296,16 @@ public class ConnectionManager {
 
             if(channelToAdd.isConnectionPending())
                 channelToAdd.finishConnect();
-            serverChannels.add(channelToAdd);
+            if (!serverChannels.contains(channelToAdd))
+                serverChannels.add(channelToAdd);
 
             //if in some way I know the leader id, I send it as ack to a newly connected node
             int l_id = n.getFD().getLeader_id();
             Tag leader = new Tag(l_id, l_id, l_id);
 
             //sending as answer my local view (all the nodes my fd says are active
-            Message init = new Message("init_ack", leader, n.getLocalView(), n.getMySett().getNodeId());
-            sendMessage(channelToAdd,init);
+            Message response = new Message(type, leader, n.getLocalView(), n.getMySett().getNodeId());
+            sendMessage(channelToAdd,response);
 
         } catch (IOException e) {
             e.printStackTrace();
