@@ -5,7 +5,9 @@ import Structures.Counter;
 import Structures.Message;
 import Structures.Tag;
 import Structures.View;
+import com.robustMRMW.FailureDetector;
 import com.robustMRMW.Node;
+import electMasterService.electMasterService;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -154,124 +156,125 @@ public class ConnectionManager {
 
     }
 
-    /*Method to wait that at least n/2+1 nodes are online */
-    /*TODO: We need a 3 way handshake to update correctly the view, the problem is that when I receive a init and I consider the quorum reached I don't answer with the last end_handshake message  */
-    public void waitForQuorum(){
 
-        System.out.println("Waiting for connections...");
-        boolean go = true;
+    /* Servicing method, starts one thread for servicing requests and one for user input  */
+    public void run() {
 
-        while ((n.getFD().getActiveNodes().size() < n.getMySett().getQuorum()) || go ) {
+        System.out.println("Running ...");
+        while (true) {
+            try {
+                // listening for connections, initializes the selector with all
+                // socket ready for I/O operations
+                selector.select();
 
-            if (selector != null) {
-                try {
-                    // listening for connections, initializes the selector with all
-                    // socket ready for I/O operations
-                    selector.select();
+                Iterator<SelectionKey> selectedKeys = selector.selectedKeys()
+                        .iterator();
+                while (selectedKeys.hasNext()) {
 
-                    Iterator<SelectionKey> selectedKeys = selector.selectedKeys()
-                            .iterator();
-                    while (selectedKeys.hasNext()) {
+                    // for each element in the selector iterator
+                    SelectionKey key = selectedKeys.next();
+                    selectedKeys.remove();
 
-                        // for each element in the selector iterator
-                        SelectionKey key = selectedKeys.next();
-                        selectedKeys.remove();
-
-                        if (!key.isValid()) {
-                            // if a channel is closed we skip it
-                            continue;
-                        }
-
-
-                        if (key.isAcceptable()) {
-                            accept(key);
-                        } else if (key.isReadable()) {
-                            go = handleInit(key);
-                        } else if (key.isConnectable()) {
-                            finishConnection(key);
-                        }
+                    if (!key.isValid()) {
+                        // if a channel is closed we skip it
+                        continue;
                     }
 
-                } catch (Exception e) {
-                    e.printStackTrace();
+
+                    if (key.isAcceptable()) {
+                        accept(key);
+                    } else if (key.isReadable()) {
+
+                        String[] tokens;
+                        try{
+                            tokens = readMessages(key);
+                        } catch (IOException e) {
+                            System.out.println("Server or reader/writer crashed, keep executing");
+                            key.channel().close();
+                            key.cancel();
+                            continue;
+                        }
+                        for(String msg : tokens) {
+
+                            Message m = ED.decode(msg);
+
+                                boolean wasInit = handleInit(m);
+
+                                /*TODO: this check could become a variable */
+                                if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum()) {
+
+                                    if (n.getFD().getLeader_id() == -1) {
+                                        System.out.println("Master is not present in the system, starting leader election routine");
+                                        electMasterService election = new electMasterService(n.getMySett(), n.getLocalView(), this, n.getFD().getActiveNodes());
+                                        int leader = election.electMaster();
+                                        n.getFD().setLeader_id(leader);
+                                        if (leader == n.getMySett().getNodeId())
+                                            n.setIsMaster(true);
+                                        System.out.println("Master elected with id: "+ n.getFD().getLeader_id());
+                                    }
+
+                                    //Master is present
+                                    if(!wasInit)
+                                        parseInput(m, (SocketChannel)key.channel());
+                                }
+
+
+                        }
+                    } else if (key.isConnectable()) {
+                        finishConnection(key);
+                    }
                 }
 
-
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         }
 
-
-
     }
 
-    private boolean handleInit(SelectionKey key) throws IOException {
+    private boolean handleInit(Message receivedMessage) throws IOException {
 
-        readBuffer.clear();
-        int count = 0;
-        String message = "";
-        SocketChannel channel = (SocketChannel) key.channel();
-        Message receivedMessage = new Message();
-        try {
-            while (channel.read(readBuffer) > 0) {
-                // flip the buffer to start reading
-                readBuffer.flip();
-                message += Charset.defaultCharset().decode(readBuffer);
-            }
+        System.out.println("Received " + receivedMessage.getRequestType() + " from node #" + receivedMessage.getSenderId());
 
-            String[] tokens = message.split("&");
-
-            for(String msg : tokens) {
-
-                receivedMessage = ED.decode(msg);
-                System.out.println("Received " + receivedMessage.getRequestType() + " from node #" + receivedMessage.getSenderId());
-
-                switch (receivedMessage.getRequestType()) {
+        switch (receivedMessage.getRequestType()) {
                     /*New messages to handle new server connection, init_ack is used only to update client FD, init connects the new client and updates communicate obj (chans, serverNumber etc..) */
-                    case "init":
-                        //update FD, serverChannels and serverCount
-                        n.getFD().updateFDForNode(receivedMessage.getSenderId());
-                        replica.put(receivedMessage.getSenderId(),receivedMessage);
-                        handleConnectionRequest("init_ack",receivedMessage.getSenderId());
-                        updateRep(receivedMessage.getSenderId());
-                        comm = new Communicate(n,this);
-                        //return false because I have to wait the end_handshake message
-                        return true;
+                case "init":
+                    //update FD, serverChannels and serverCount
+                    n.getFD().updateFDForNode(receivedMessage.getSenderId());
+                    replica.put(receivedMessage.getSenderId(),receivedMessage);
+                    handleConnectionRequest("init_ack",receivedMessage.getSenderId());
+                    updateRep(receivedMessage.getSenderId());
+                    comm = new Communicate(n,this);
+                    return true;
 
-                    case "init_ack":
+                case "init_ack":
 
-                        if (receivedMessage.getTag().getId() == -1 && receivedMessage.getTag().getLabel() == -1)
-                            //no leader is present, just warning
-                            System.out.println("No leader present in the system");
+                    if (receivedMessage.getTag().getId() == -1 && receivedMessage.getTag().getLabel() == -1)
+                        //no leader is present, just warning
+                        System.out.println("No leader present in the system");
 
-                        //Setting the leader Id from response, I don't check which value it has
-                        n.getFD().setLeader_id(receivedMessage.getTag().getId());
-                        n.getFD().updateFDForNode(receivedMessage.getSenderId());
-                        replica.put(receivedMessage.getSenderId(),receivedMessage);
-                        handleConnectionRequest("end_handshake",receivedMessage.getSenderId());
-                        return true;
+                    //Setting the leader Id from response, I don't check which value it has
+                    n.getFD().setLeader_id(receivedMessage.getTag().getId());
+                    n.getFD().updateFDForNode(receivedMessage.getSenderId());
+                    replica.put(receivedMessage.getSenderId(),receivedMessage);
+                    handleConnectionRequest("end_handshake",receivedMessage.getSenderId());
+                    return true;
 
                     /*Need this to send correct view to older node (with init I send the view with only me active */
-                    case "end_handshake":
-                        System.out.println("Updating view for newly connected node");
-                        n.getFD().updateFDForNode(receivedMessage.getSenderId());
-                        replica.put(receivedMessage.getSenderId(),receivedMessage);
-                        return false;
-                }
-            }
+                case "end_handshake":
+                    System.out.println("Updating view for newly connected node");
+                    n.getFD().updateFDForNode(receivedMessage.getSenderId());
+                    replica.put(receivedMessage.getSenderId(),receivedMessage);
+                    return true;
+                default:
+                    return false;
         }
-        catch (IOException e) {
-            System.out.println("Server crashed, keep executing");
-            channel.close();
-            key.cancel();
-            return true;
-        }
-
-        return true;
-
     }
 
+
+
     /* Needed to update the replica message: we imply that if we receive a init message all the other nodes receive the same message too */
-    private void updateRep (int id){
+    private void updateRep (int id) {
 
         Collection<Message> c = replica.values();
 
@@ -280,7 +283,7 @@ public class ConnectionManager {
 
                 if (m.getSenderId() != id) {
 
-                    System.out.println("Received init from: "+ id + " updating view of node: "+m.getSenderId());
+                    System.out.println("Received init from: " + id + " updating view of node: " + m.getSenderId());
                     View v = m.getView();
                     v.setArrayFromValueString();
                     ArrayList<Integer> ids = v.getIdArray();
@@ -298,11 +301,9 @@ public class ConnectionManager {
 
             }
         }
-
-
-
-
     }
+
+
 
     /* this handles the case in which we receive a init message and we have to update the list of nodes addresses, channels and FD (and answering) */
     private void handleConnectionRequest(String type, int id){
@@ -345,164 +346,77 @@ public class ConnectionManager {
 
     }
 
+    private void parseInput(Message receivedMessage, SocketChannel channel) throws IOException {
 
-    /* Servicing method, starts one thread for servicing requests and one for user input  */
-    public void run() {
+        Tag maxTag = findMaxTagFromSet(rep);
+        System.out.println("Received message '" + receivedMessage.getRequestType() + "' from node #" + receivedMessage.getSenderId());
 
-        System.out.println("Running ...");
+            switch (receivedMessage.getRequestType()) {
 
-        while (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum()) {
-            try {
-                // listening for connections, initializes the selector with all
-                // socket ready for I/O operations
-                selector.select();
+                case "query":
+                    sendMessage(channel, new Message("query-ack", maxTag, rep.get(maxTag), n.getMySett().getNodeId()));
+                    break;
 
-                Iterator<SelectionKey> selectedKeys = selector.selectedKeys()
-                        .iterator();
-                while (selectedKeys.hasNext()) {
+                case "pre-write":
+                    Tag newTag = receivedMessage.getTag();
+                    //System.out.println("Received tag has: label->" + newTag.getLabel() + " counter->" + newTag.getCounters().getFirst().getCounter() + " written by->" + newTag.getCounters().getFirst().getId());
+                    //System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
 
-                    // for each element in the selector iterator
-                    SelectionKey key = selectedKeys.next();
-                    selectedKeys.remove();
-
-                    if (!key.isValid()) {
-                        // if a channel is closed we skip it
-                        continue;
+                    if (maxTag.compareTo(newTag) >= 0) {
+                        System.out.println("Received tag smaller than local max tag");
+                        break;
                     }
 
+                    n.setLocalTag(newTag);
+                    n.setLocalView(receivedMessage.getView());
+                    n.getLocalView().setStatus(View.Status.PRE);
+                    rep.put(n.getLocalTag(), n.getLocalView());
+                    sendMessage(channel, new Message("pre-write-ack", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId()));
+                    break;
 
-                    if (key.isAcceptable()) {
-                        accept(key);
-                    } else if (key.isReadable()) {
-                        System.out.println("IS READABLE");
-                        parseInput(key);
-                    } else if (key.isConnectable()) {
-                        finishConnection(key);
+                case "finalize":
+                    //saving proper message in replica map, in this way I can retrieve the node view
+                    replica.put(receivedMessage.getSenderId(), receivedMessage);
+                    Tag bestTag = receivedMessage.getTag();
+                    //System.out.println("Received tag has: label->" + bestTag.getLabel() + " counter->" + bestTag.getCounters().getFirst().getCounter() + " written by->" + bestTag.getCounters().getFirst().getId());
+                    //System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
+
+                    if (rep.containsKey(bestTag)) {
+                        rep.get(bestTag).setStatus(View.Status.FIN);
+                        sendMessage(channel, new Message("fin-ack", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId()));
+                    } else {
+
+                        View tmp = new View("");
+                        tmp.setStatus(View.Status.FIN);
+                        rep.put(bestTag, tmp);
+                        sendMessage(channel, new Message("fin-ack", bestTag, tmp, n.getMySett().getNodeId()));
                     }
-                }
+                    n.getLocalView().setStatus(View.Status.FIN);
+                    break;
 
-            } catch (Exception e) {
-                e.printStackTrace();
+                case "gossip":
+                    //saving proper message in replica map, in this way I can retrieve the node view
+                    replica.put(receivedMessage.getSenderId(), receivedMessage);
+                    Tag latestTag = receivedMessage.getTag();
+                    if (rep.containsKey(latestTag))
+                        rep.put(latestTag, receivedMessage.getView());
+                    break;
+
+                case "userReadRequest":
+                    read();
+                    sendMessage(channel, new Message("success", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId()));
+                    break;
+
+                case "userWriteRequest":
+                    write(receivedMessage.getView());
+                    System.out.println("Replying to request with result: success");
+                    sendMessage(channel, new Message("success", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId()));
+                    break;
             }
-        }
+
 
     }
 
-    private void parseInput(SelectionKey key) throws IOException {
-
-        readBuffer.clear();
-        int count = 0;
-        String message = "";
-        SocketChannel channel = (SocketChannel) key.channel();
-        Message receivedMessage = new Message();
-        try {
-            while (channel.read(readBuffer) > 0) {
-                // flip the buffer to start reading
-                readBuffer.flip();
-                message += Charset.defaultCharset().decode(readBuffer);
-            }
-
-
-
-
-            String[] tokens = message.split("&");
-
-            for(String msg : tokens) {
-
-                receivedMessage = ED.decode(msg);
-
-                System.out.println("Received query '"
-                        + receivedMessage.getRequestType() + "' from node #"
-                        + receivedMessage.getSenderId());
-                Tag maxTag = findMaxTagFromSet(rep);
-
-                Scanner s = new Scanner(System.in);
-                s.nextLine();
-
-                switch (receivedMessage.getRequestType()) {
-
-                    case "query":
-                        sendMessage(channel, new Message("query-ack", maxTag, rep.get(maxTag), n.getMySett().getNodeId()));
-                        break;
-
-                    case "pre-write":
-                        Tag newTag = receivedMessage.getTag();
-                        //System.out.println("Received tag has: label->" + newTag.getLabel() + " counter->" + newTag.getCounters().getFirst().getCounter() + " written by->" + newTag.getCounters().getFirst().getId());
-                        //System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
-
-                        if (maxTag.compareTo(newTag) >= 0) {
-                            System.out.println("Received tag smaller than local max tag");
-                            break;
-                        }
-
-                        n.setLocalTag(newTag);
-                        n.setLocalView(receivedMessage.getView());
-                        n.getLocalView().setStatus(View.Status.PRE);
-                        rep.put(n.getLocalTag(), n.getLocalView());
-                        sendMessage(channel, new Message("pre-write-ack", n.getLocalTag(),
-                                n.getLocalView(), n.getMySett().getNodeId()));
-                        break;
-
-                    case "finalize":
-                        //saving proper message in replica map, in this way I can retrieve the node view
-                        replica.put(receivedMessage.getSenderId(),receivedMessage);
-
-                        Tag bestTag = receivedMessage.getTag();
-                        //System.out.println("Received tag has: label->" + bestTag.getLabel() + " counter->" + bestTag.getCounters().getFirst().getCounter() + " written by->" + bestTag.getCounters().getFirst().getId());
-                        //System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
-
-                        if (rep.containsKey(bestTag)) {
-                            rep.get(bestTag).setStatus(View.Status.FIN);
-                            sendMessage(channel, new Message("fin-ack", n.getLocalTag(),
-                                    n.getLocalView(), n.getMySett().getNodeId()));
-                        } else {
-
-                            //TODO: had to had a response, otherwise no ack was sent and couldn't go forward
-                            //if we are here the tag we received is not contained in our rep map (can happen). Check the paper on drive
-                            View tmp = new View("");
-                            tmp.setStatus(View.Status.FIN);
-                            rep.put(bestTag, tmp);
-                            sendMessage(channel, new Message("fin-ack", bestTag,
-                                    tmp, n.getMySett().getNodeId()));
-                        }
-                        n.getLocalView().setStatus(View.Status.FIN);
-
-                        break;
-
-                    case "gossip":
-                        //saving proper message in replica map, in this way I can retrieve the node view
-                        replica.put(receivedMessage.getSenderId(),receivedMessage);
-
-                        Tag latestTag = receivedMessage.getTag();
-                        if (rep.containsKey(latestTag))
-                            rep.put(latestTag, receivedMessage.getView());
-                        break;
-
-                    case "userReadRequest":
-                        read();
-                        sendMessage(channel,
-                                new Message("success", n.getLocalTag(),
-                                        n.getLocalView(), n.getMySett().getNodeId()));
-                        break;
-
-                    case "userWriteRequest":
-                        write(receivedMessage.getView());
-                        System.out.println("Replying to request with result: success");
-                        sendMessage(channel,
-                                new Message("success", n.getLocalTag(),
-                                        n.getLocalView(), n.getMySett().getNodeId()));
-                        break;
-
-                }
-            }
-        } catch (IOException e) {
-            System.out.println("Server or reader/writer crashed, keep executing");
-
-            channel.close();
-            key.cancel();
-            return;
-        }
-    }
 
 
 
@@ -660,6 +574,22 @@ public class ConnectionManager {
         while (writeBuffer.hasRemaining())
             s.write(writeBuffer); // writing messsage to server
         writeBuffer.clear();
+
+    }
+
+    private String[] readMessages(SelectionKey key) throws IOException {
+
+
+        readBuffer.clear();
+        String message = "";
+        SocketChannel channel = (SocketChannel) key.channel();
+            while (channel.read(readBuffer) > 0) {
+                // flip the buffer to start reading
+                readBuffer.flip();
+                message += Charset.defaultCharset().decode(readBuffer);
+            }
+
+            return message.split("&");
 
     }
 

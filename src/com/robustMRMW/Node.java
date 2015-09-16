@@ -50,10 +50,12 @@ public class Node {
         System.out.println("Setting up node in system with: " + mySett.getNumberOfNodes() + " nodes, " + mySett.getQuorum() + " quorum");
 
         try {
-            //TODO: cm should retrieve leader_id if it is present somewhere
+
             cm.connect();
+
         } catch (IOException e){
 
+            System.out.println("Error while connecting node");
 
         }
 
@@ -64,37 +66,7 @@ public class Node {
 
     public void run(){
 
-
-        while(true) {
-            if (FD.getActiveNodes().size() < mySett.getQuorum())
-
-                cm.waitForQuorum();
-
-
-            else {
-
-                if (FD.getLeader_id() == -1) {
-                    System.out.println("Master is not present in the system, starting leader election routine");
-                    electMasterService election = new electMasterService(mySett, localView, cm, FD.getActiveNodes());
-                    int leader = election.electMaster();
-                    FD.setLeader_id(leader);
-                    if (leader == mySett.getNodeId())
-                        isMaster = true;
-                    System.out.println("Master elected with id: "+ FD.getLeader_id());
-                }
-
-                if (FD.getActiveNodes().size() >= mySett.getQuorum() && FD.getLeader_id() != -1) {
-                    System.out.println("Run allowed with leader id: "+ FD.getLeader_id() +", quorum of " + FD.getActiveNodes().size()+" nodes and localView:" + localView.getValue());
-                    cm.run();
-                }
-                else continue;
-                break;
-            }
-        }
-
-
-
-
+        cm.run();
 
     }
 
@@ -103,8 +75,6 @@ public class Node {
 
 
     /* Getters and Setters */
-
-
 
     public FailureDetector getFD() {
         return FD;
