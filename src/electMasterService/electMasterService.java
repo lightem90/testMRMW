@@ -63,7 +63,7 @@ public class electMasterService {
                 nodeView.setArrayFromValueString();
 
                 //isContained checks if l has a quorum for his view and if he is contained in each view of the nodes of his view (can't check proposed view and FD since we don't have replicas)
-                if ((nodeView.getIdArray().size() >= mSet.getQuorum()) && isContained(nodeView, l))
+                if ((nodeView.getIdArray().size() > mSet.getQuorum()) && isContained(nodeView, l))
                     seemCrd.add(l);
             }
         }
@@ -160,20 +160,16 @@ public class electMasterService {
 
         if(mId == -1){
             //noCrd must be true and quorum was reached between servers
-            //TODO: should send my view to everyone and let the dicks sort themselves out (propose)
-
-
+            //TODO: should send my view to everyone and let the dicks sort themselves out
         }
         else{
             //real master was elected, WOW
             if(mId == mSet.getNodeId())
                 //I'm the leader, decide what to do
-                System.out.println("I'm the leader");
-
-            else //do nothing
-                System.out.println("I'm a follower");
-
-            mSet.setNodeId(mId);
+                System.out.println("Hi, I am node "+ mId +" and I am the boss");
+            else
+                //do nothing
+                System.out.println("Hi, I am node "+ mSet.getNodeId() +" and I think the boss should be"+ mId);
         }
 
     return 0;
