@@ -49,7 +49,7 @@ public class electMasterService {
 
     }
 
-    public void electMaster(){
+    public int electMaster(){
 
         seemCrd = new ArrayList<>(mSet.getNumberOfNodes());
         Set<Integer> idList = failureDetector.keySet();
@@ -63,17 +63,25 @@ public class electMasterService {
                 nodeView.setArrayFromValueString();
 
                 //isContained checks if l has a quorum for his view and if he is contained in each view of the nodes of his view (can't check proposed view and FD since we don't have replicas)
-                if ((nodeView.getIdArray().size() > mSet.getQuorum()) && isContained(nodeView, l))
+                if ((nodeView.getIdArray().size() >= mSet.getQuorum()) && isContained(nodeView, l))
                     seemCrd.add(l);
+            }
+            else {
+                //Should be me
+
+                if (failureDetector.size() >= mSet.getQuorum() && isContained(view,mSet.getNodeId()))
+                    seemCrd.add(mSet.getNodeId());
+
+
             }
         }
 
         if (seemCrd == null || seemCrd.isEmpty()) noCrd = true;
-        proposeMaster();
+        return proposeMaster();
 
     }
 
-    public void proposeMaster(){
+    public int proposeMaster(){
 
         int masterId = -1;
 
@@ -145,14 +153,14 @@ public class electMasterService {
             seemCrd.sort(new Comparator<Integer>() {
                 @Override
                 public int compare(Integer o1, Integer o2) {
-                    return o1.compareTo(o2);
+                    return o2.compareTo(o1);
                 }
             });
             masterId = seemCrd.get(0);
         }
 
         //TODO: up to now, the noCrd part of the code does not change masterId, but simply leaves it to -1 and arrives here only if quorum is reached. This should not be the final solution
-        handleMasterId(masterId);
+        return handleMasterId(masterId);
 
     }
 
@@ -169,10 +177,11 @@ public class electMasterService {
                 System.out.println("Hi, I am node "+ mId +" and I am the boss");
             else
                 //do nothing
-                System.out.println("Hi, I am node "+ mSet.getNodeId() +" and I think the boss should be"+ mId);
+                System.out.println("Hi, I am node "+ mSet.getNodeId() +" and I think the boss should be: "+ mId);
+
         }
 
-    return 0;
+    return mId;
     }
 
 
@@ -183,13 +192,15 @@ public class electMasterService {
         //for each nodeID in the propView
         for(int i : mView.getIdArray()){
 
-            Message m = rep.get(i);
-            View v = m.getView();
-            v.setArrayFromValueString();
+            if (rep.containsKey(i)) {
+                Message m = rep.get(i);
+                View v = m.getView();
+                v.setArrayFromValueString();
 
-            //Check if mId is in the view (list of active nodes of node i)
-            if (v.getIdArray().contains(id))
-                return true;
+                //Check if mId is in the view (list of active nodes of node i)
+                if (v.getIdArray().contains(id))
+                    return true;
+            }
         }
 
 

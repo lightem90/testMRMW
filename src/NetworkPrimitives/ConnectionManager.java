@@ -16,7 +16,6 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.util.*;
 
 /**
@@ -233,9 +232,7 @@ public class ConnectionManager {
                         n.getFD().updateFDForNode(receivedMessage.getSenderId());
                         replica.put(receivedMessage.getSenderId(),receivedMessage);
                         handleConnectionRequest("init_ack",receivedMessage.getSenderId());
-                        /* TODO: Quando un altro nodo si connette dobbiamo aggiornare la copia locale della nostra view (in replica) negli altri nodi updateOthersView(receivedMessage.getSenderId()); */
-                        /* TODO: abbiamo 2 modi per farlo: o ogni nodo aggiorna la view degli altri sperando che tutti abbiano ricevuto lo stesso init, oppure rimandiamo init quando riceviamo un init*/
-                        /* TODO: spero davvero che si capisca */
+                        updateRep(receivedMessage.getSenderId());
                         comm = new Communicate(n,this);
                         //return false because I have to wait the end_handshake message
                         return true;
@@ -270,6 +267,40 @@ public class ConnectionManager {
         }
 
         return true;
+
+    }
+
+    /* Needed to update the replica message: we imply that if we receive a init message all the other nodes receive the same message too */
+    private void updateRep (int id){
+
+        Collection<Message> c = replica.values();
+
+        if (c.size() > 0) {
+            for (Message m : c) {
+
+                if (m.getSenderId() != id) {
+
+                    System.out.println("Received init from: "+ id + " updating view of node: "+m.getSenderId());
+                    View v = m.getView();
+                    v.setArrayFromValueString();
+                    ArrayList<Integer> ids = v.getIdArray();
+                    System.out.println("Old view: " + v.getValue());
+                    if (!ids.contains(id))
+                        ids.add(id);
+                    v.setIdArray(ids);
+                    v.setStringFromArrayString();
+                    System.out.println("New view: " + v.getValue());
+                    m.setView(v);
+                    replica.put(id, m);
+
+                }
+
+
+            }
+        }
+
+
+
 
     }
 
@@ -320,7 +351,7 @@ public class ConnectionManager {
 
         System.out.println("Running ...");
 
-        while (true) {
+        while (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum()) {
             try {
                 // listening for connections, initializes the selector with all
                 // socket ready for I/O operations
@@ -384,6 +415,9 @@ public class ConnectionManager {
                         + receivedMessage.getRequestType() + "' from node #"
                         + receivedMessage.getSenderId());
                 Tag maxTag = findMaxTagFromSet(rep);
+
+                Scanner s = new Scanner(System.in);
+                s.nextLine();
 
                 switch (receivedMessage.getRequestType()) {
 

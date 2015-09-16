@@ -73,13 +73,13 @@ public class Node {
 
             else {
 
-                Scanner in = new Scanner(System.in);
-                in.nextLine();
-
                 if (FD.getLeader_id() == -1) {
                     System.out.println("Master is not present in the system, starting leader election routine");
                     electMasterService election = new electMasterService(mySett, localView, cm, FD.getActiveNodes());
-                    election.electMaster();
+                    int leader = election.electMaster();
+                    FD.setLeader_id(leader);
+                    if (leader == mySett.getNodeId())
+                        isMaster = true;
                     System.out.println("Master elected with id: "+ FD.getLeader_id());
                 }
 
