@@ -21,7 +21,7 @@ public class Communicate {
 
 
 	//Class variables
-	private int serverCount;
+	private int activeServers;
 	private ArrayList<Boolean> turns;
 	private ArrayList<SocketChannel> chan;
 
@@ -38,12 +38,13 @@ public class Communicate {
 	//initialization
 	public Communicate(Node currNode, ConnectionManager cm) {
 
-		serverCount = cm.getServerCount();
 		chan = cm.getServerChannels();
+		activeServers = chan.size();
+
 
 		//initializing all position to true, meaning we have to send to everyone
-		turns = new ArrayList<>(serverCount);
-		for (int i = 0; i < serverCount; i++) {
+		turns = new ArrayList<>(activeServers);
+		for (int i = 0; i < activeServers; i++) {
 
 			turns.add(true);
 
@@ -116,12 +117,12 @@ public class Communicate {
 
 		Message reply;
 
-		Message[] values = new Message[serverCount];
-		ArrayList<Status> status = new ArrayList<>(serverCount);
+		Message[] values = new Message[activeServers];
+		ArrayList<Status> status = new ArrayList<>(activeServers);
 
 		// initialize status and service variables, we have to send to everyone
 		int ackCounter = 0;
-		for (int i = 0; i < serverCount; i++) {
+		for (int i = 0; i < activeServers; i++) {
 			values[i] = null;
 			status.add(Status.NOTSENT);
 		}
@@ -132,7 +133,7 @@ public class Communicate {
 		writeBuffer.put(toSend.getBytes());
 
 		//writing message on EVERY open channel
-		for (int i = 0; i < serverCount; i++) {
+		for (int i = 0; i < activeServers; i++) {
 
 				try {
 					System.out.println("Sending '"
@@ -145,12 +146,12 @@ public class Communicate {
 
 				} catch (IOException e) {
 
-					//if write fails it means that the channel has been closed so we cannot write to it
-					System.out.println("Channel doesn't exist anymore, removing it");
+					//if write fails it means that the channel has been closed so we cannot write to it;
 					removeCrashedServer(i, chan);
 					status.remove(i);
 					i--;
-					serverCount = caller.getServerCount();
+					activeServers = caller.getServerChannels().size();
+					System.out.println("Channel doesn't exist anymore. Active channels left:"+ activeServers);
 					continue;
 				}
 
@@ -163,9 +164,9 @@ public class Communicate {
 
 			// Start receiving acks until quorum is reached.
 			// In case of ack from a previous query, ignore the message and send the new query
-			while (ackCounter < serverCount / 2 + 1) {
+			while (ackCounter < activeServers / 2 + 1) {
 
-				for (int i = 0; i < serverCount; i++) {
+				for (int i = 0; i < activeServers; i++) {
 					readBuffer.clear();
 					String message = "";
 					try {
@@ -186,11 +187,11 @@ public class Communicate {
 					} catch (IOException e) {
 
 						//if write fails it means that the channel has been closed so we cannot write to it
-						System.out.println("Channel doesn't exist anymore, removing it");
 						removeCrashedServer(i, chan);
 						status.remove(i);
 						i--;
-						serverCount = caller.getServerCount();
+						activeServers = caller.getServerChannels().size();
+						System.out.println("Channel doesn't exist anymore. Active channels left:"+ activeServers);
 						continue;
 					}
 
@@ -213,11 +214,11 @@ public class Communicate {
 						} catch (IOException e) {
 
 							//if write fails it means that the channel has been closed so we cannot write to it
-							System.out.println("Channel doesn't exist anymore, removing it");
 							removeCrashedServer(i, chan);
 							status.remove(i);
-							serverCount = caller.getServerCount();
 							i--;
+							activeServers = caller.getServerChannels().size();
+							System.out.println("Channel doesn't exist anymore. Active channels left:"+ activeServers);
 							continue;
 						}
 						turns.set(i,false);
@@ -260,7 +261,6 @@ public class Communicate {
 		try {
 			serverChannels.get(i).close();
 			serverChannels.remove(i);
-			serverCount--;
 			turns.remove(i);
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -270,12 +270,12 @@ public class Communicate {
 
 
 	/*Getters and Setters */
-	public int getServerCount() {
-		return serverCount;
+	public int getActiveServers() {
+		return activeServers;
 	}
 
-	public void setServerCount(int serverCount) {
-		this.serverCount = serverCount;
+	public void setActiveServers(int activeServers) {
+		this.activeServers = activeServers;
 	}
 
 	public ArrayList<SocketChannel> getChan() {

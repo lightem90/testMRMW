@@ -150,7 +150,8 @@ public class ConnectionManager {
         if (serverChannels.size() > 0) {
             for (SocketChannel ch : serverChannels)
                     sendMessage(ch, init);
-            read();
+            //TODO: read here = deadlock
+            //read();
         }
 
 
@@ -189,9 +190,11 @@ public class ConnectionManager {
                         try{
                             tokens = readMessages(key);
                         } catch (IOException e) {
-                            System.out.println("Server or reader/writer crashed, keep executing");
                             key.channel().close();
                             key.cancel();
+                            serverChannels.remove(key.channel());
+                            System.out.println("Server or reader/writer crashed, remaining channels:"+serverChannels.size());
+                            comm = new Communicate(n,this);
                             continue;
                         }
                         for(String msg : tokens) {
@@ -205,6 +208,7 @@ public class ConnectionManager {
 
                                     if (n.getFD().getLeader_id() == -1) {
                                         System.out.println("Master is not present in the system, starting leader election routine");
+                                        //TODO: should I read here somewhere? Meaning that if some trouble happend during the l.e. any node should wait a read at least from a quorum (if there's still a quorum)
                                         electMasterService election = new electMasterService(n.getMySett(), n.getLocalView(), this, n.getFD().getActiveNodes());
                                         int leader = election.electMaster();
                                         n.getFD().setLeader_id(leader);
@@ -590,13 +594,17 @@ public class ConnectionManager {
     /* writes message into buffer */
     private void sendMessage(SocketChannel s, Message m) throws IOException {
 
-        writeBuffer.clear();
-        writeBuffer.put(ED.encode(m).getBytes());
-        writeBuffer.flip();
+        if (s.isConnectionPending())
+            s.finishConnect();
 
-        while (writeBuffer.hasRemaining())
-            s.write(writeBuffer); // writing messsage to server
-        writeBuffer.clear();
+            writeBuffer.clear();
+            writeBuffer.put(ED.encode(m).getBytes());
+            writeBuffer.flip();
+
+            while (writeBuffer.hasRemaining())
+                s.write(writeBuffer); // writing messsage to server
+            writeBuffer.clear();
+
 
     }
 
