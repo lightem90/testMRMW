@@ -5,7 +5,6 @@ import Structures.Counter;
 import Structures.Message;
 import Structures.Tag;
 import Structures.View;
-import com.robustMRMW.FailureDetector;
 import com.robustMRMW.Node;
 import electMasterService.electMasterService;
 
@@ -26,6 +25,7 @@ import java.util.*;
 public class ConnectionManager {
 
     //Class constants
+    //private final static String ADDRESS_PATH = "/groups/Gulliver/virtualSynchrony/address.txt";
     private final static String ADDRESS_PATH = "address.txt";
     private final static String ADDRESS = "localhost";
     private final static int PORT = 0;
@@ -44,8 +44,6 @@ public class ConnectionManager {
     private Map<Integer,InetSocketAddress> otherNodesAddress;
     private Map<Tag, View> rep;
     private Map<Integer,Message> replica;
-
-    private LinkedList<Message> messageList;
 
     // Custom objects
     private Communicate comm;
@@ -152,7 +150,11 @@ public class ConnectionManager {
         if (serverChannels.size() > 0) {
             for (SocketChannel ch : serverChannels)
                     sendMessage(ch, init);
+            read();
         }
+
+
+
 
     }
 
@@ -160,8 +162,6 @@ public class ConnectionManager {
     /* Servicing method, starts one thread for servicing requests and one for user input  */
     public void run() {
 
-        System.out.println("Running ...");
-        while (true) {
             try {
                 // listening for connections, initializes the selector with all
                 // socket ready for I/O operations
@@ -208,8 +208,17 @@ public class ConnectionManager {
                                         electMasterService election = new electMasterService(n.getMySett(), n.getLocalView(), this, n.getFD().getActiveNodes());
                                         int leader = election.electMaster();
                                         n.getFD().setLeader_id(leader);
-                                        if (leader == n.getMySett().getNodeId())
+                                        if (leader == -1){
+                                            System.out.println("No suitable leader, querying...");
+                                            read();
+                                            System.out.println("Query ended");
+                                            continue;
+
+                                        }
+                                        if (leader == n.getMySett().getNodeId()) {
                                             n.setIsMaster(true);
+                                            write(n.getLocalView());
+                                        }
                                         System.out.println("Master elected with id: "+ n.getFD().getLeader_id());
                                     }
 
@@ -228,7 +237,7 @@ public class ConnectionManager {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-        }
+
 
     }
 
@@ -252,6 +261,11 @@ public class ConnectionManager {
                     if (receivedMessage.getTag().getId() == -1 && receivedMessage.getTag().getLabel() == -1)
                         //no leader is present, just warning
                         System.out.println("No leader present in the system");
+                    else {
+                        System.out.println("Leader is: " + receivedMessage.getTag().getLabel());
+                        n.getFD().setLeader_id(receivedMessage.getTag().getLabel());
+                        //TODO: what to do you received view? If there's a quorum the view should be valid
+                    }
 
                     //Setting the leader Id from response, I don't check which value it has
                     n.getFD().setLeader_id(receivedMessage.getTag().getId());
@@ -355,6 +369,7 @@ public class ConnectionManager {
 
                 case "query":
                     sendMessage(channel, new Message("query-ack", maxTag, rep.get(maxTag), n.getMySett().getNodeId()));
+                    replica.put(receivedMessage.getSenderId(),receivedMessage);
                     break;
 
                 case "pre-write":
@@ -400,6 +415,7 @@ public class ConnectionManager {
                     Tag latestTag = receivedMessage.getTag();
                     if (rep.containsKey(latestTag))
                         rep.put(latestTag, receivedMessage.getView());
+                    replica.put(receivedMessage.getSenderId(), receivedMessage);
                     break;
 
                 case "userReadRequest":
@@ -422,6 +438,13 @@ public class ConnectionManager {
 
 
     //Networking functions
+
+    public void operation(){
+
+
+        write(n.getLocalView());
+
+    }
 
     private void accept(SelectionKey key) throws IOException {
         ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key

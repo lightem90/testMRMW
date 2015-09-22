@@ -66,7 +66,22 @@ public class Node {
 
     public void run(){
 
-        cm.run();
+
+        System.out.println("Running ...");
+        while (true) {
+
+            cm.run();
+            if (isMaster)
+                //TODO: if I'm the master I will do some kind of operation in the system and then writing to the followers the datas and my view
+                operation();
+
+        }
+
+    }
+
+    public void operation(){
+
+        cm.operation();
 
     }
 
