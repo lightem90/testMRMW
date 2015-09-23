@@ -141,8 +141,11 @@ public class Communicate {
 							+ "' query to server");
 
 					writeBuffer.flip();
-					while (writeBuffer.hasRemaining())
+					while (writeBuffer.hasRemaining()) {
+						if (chan.get(i).isConnectionPending() || !chan.get(i).isConnected())
+							chan.get(i).finishConnect();
 						chan.get(i).write(writeBuffer);
+					}
 
 				} catch (IOException e) {
 

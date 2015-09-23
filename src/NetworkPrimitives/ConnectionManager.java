@@ -193,7 +193,7 @@ public class ConnectionManager {
                             key.channel().close();
                             key.cancel();
                             serverChannels.remove(key.channel());
-                            System.out.println("Server or reader/writer crashed, remaining channels:"+serverChannels.size());
+                            System.out.println("Server or reader/writer crashed");
                             comm = new Communicate(n,this);
                             continue;
                         }
@@ -594,10 +594,13 @@ public class ConnectionManager {
     /* writes message into buffer */
     private void sendMessage(SocketChannel s, Message m) throws IOException {
 
-        if (s.isConnectionPending())
+        System.out.println("Sending: " + m.getRequestType() + " to " + s.getRemoteAddress());
+
+        if (s.isConnectionPending() || !s.isConnected())
             s.finishConnect();
 
-            writeBuffer.clear();
+
+        writeBuffer.clear();
             writeBuffer.put(ED.encode(m).getBytes());
             writeBuffer.flip();
 
