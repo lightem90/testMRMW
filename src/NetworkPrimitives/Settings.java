@@ -23,6 +23,12 @@ public class Settings {
 
 
     }
+    public Settings(int n){
+
+        nodeId = n;
+
+
+    }
 
 
 

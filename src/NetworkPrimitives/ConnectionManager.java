@@ -27,8 +27,8 @@ public class ConnectionManager {
     //Class constants
     //private final static String ADDRESS_PATH = "/groups/Gulliver/virtualSynchrony/address.txt";
     private final static String ADDRESS_PATH = "address.txt";
-    private final static String ADDRESS = "localhost";
-    private final static int PORT = 0;
+    //private final static String ADDRESS = "localhost";
+    private final static int PORT = 3000;
 
 
     // Class buffer
@@ -54,7 +54,7 @@ public class ConnectionManager {
     // Initialization
     public ConnectionManager(Node c){
 
-        hostAddress = new InetSocketAddress(ADDRESS,c.getMySett().getPort());
+
         rep = new HashMap<>();
         ED = new EncDec();
         n = c;
@@ -73,21 +73,6 @@ public class ConnectionManager {
         replica = new HashMap<>();
         Selector socketSelector = null;
 
-        try {
-
-            socketSelector = Selector.open();
-            ServerSocketChannel serverChannel = ServerSocketChannel.open();
-            serverChannel.configureBlocking(false);
-            serverChannel.socket().bind(hostAddress);
-            hostAddress = serverChannel.getLocalAddress();
-            serverChannel.register(socketSelector, SelectionKey.OP_ACCEPT);
-            selector = socketSelector;
-
-        } catch (IOException e) {
-
-            System.out.println("Cannot initialize selector");
-            e.printStackTrace();
-        }
 
         ArrayList<Integer> ids = new ArrayList<>();
 
@@ -102,9 +87,31 @@ public class ConnectionManager {
 
                 String line = lines.get(i);
                 String[] tokens = line.split(" ");
-                otherNodesAddress.put(Integer.parseInt(tokens[0]), getAddressFromString(tokens[1]));
+
                 ids.add(Integer.parseInt(tokens[0]));
-                serverCount = ids.size();
+                if (Integer.parseInt(tokens[0]) == n.getMySett().getNodeId())
+                    hostAddress = new InetSocketAddress(tokens[1],PORT);
+                else
+                    otherNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(tokens[1],PORT));
+
+            }
+            serverCount = ids.size();
+
+            try {
+
+                socketSelector = Selector.open();
+                ServerSocketChannel serverChannel = ServerSocketChannel.open();
+                serverChannel.configureBlocking(false);
+                System.out.println("Listening socket at: "+hostAddress.toString());
+                serverChannel.socket().bind(hostAddress);
+                hostAddress = serverChannel.getLocalAddress();
+                serverChannel.register(socketSelector, SelectionKey.OP_ACCEPT);
+                selector = socketSelector;
+
+            } catch (IOException e) {
+
+                System.out.println("Cannot initialize selector");
+                e.printStackTrace();
             }
 
         } catch (IOException e) {
@@ -126,7 +133,9 @@ public class ConnectionManager {
 
             if (id != n.getMySett().getNodeId()) {
 
+
                 SocketAddress toAdd = otherNodesAddress.get(id);
+                System.out.println("Trying connection to: " +toAdd.toString());
                 SocketChannel channelToAdd = SocketChannel.open();
                 channelToAdd.configureBlocking(false);
                 channelToAdd.connect(toAdd);
@@ -541,7 +550,7 @@ public class ConnectionManager {
 
     //Utilities
 
-    private InetSocketAddress getAddressFromString(String line) {
+    /*private InetSocketAddress getAddressFromString(String line) {
 
         line = line.replace("/", "");
         line = line.replace(":", " ");
@@ -549,6 +558,7 @@ public class ConnectionManager {
         return new InetSocketAddress(splitted[0],
                 Integer.parseInt(splitted[1]));
     }
+    */
 
 
     /* finds the hidhest tag in rep map */

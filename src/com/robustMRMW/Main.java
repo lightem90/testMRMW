@@ -11,22 +11,22 @@ public class Main {
         boolean flag = true;
         while(flag){
 
-            if (args.length != 3){
+            if (args.length != 1){
 
-                System.out.println("Usage: program <type> (1:server, 2:reader/writer) <id> <port>");
+                System.out.println("Usage: program <id>");
                 flag = false;
 
             } else {
 
                 //TODO: checks
-                if (Integer.parseInt(args[0]) == 1) {
+                //if (Integer.parseInt(args[0]) == 1) {
 
-                    System.out.println("Starting server");
-                    NetworkPrimitives.Settings init = new Settings(Integer.parseInt(args[1]), Integer.parseInt(args[2]));
+                    System.out.println("Starting server with id: "+(args[0]));
+                    NetworkPrimitives.Settings init = new Settings(Integer.parseInt(args[0]));
                     Node n = new Node(init);
                     n.setup();
                     n.run();
-                } else {
+                /*} else {
 
                     System.out.println("Starting reader / writer");
                     UserInputProcess ui = new UserInputProcess();
@@ -34,6 +34,7 @@ public class Main {
 
 
                 }
+                */
 
             }
         }
