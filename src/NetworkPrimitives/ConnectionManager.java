@@ -135,33 +135,33 @@ public class ConnectionManager {
 
 
                 SocketAddress toAdd = otherNodesAddress.get(id);
-                System.out.println("Trying connection to: " +toAdd.toString());
                 SocketChannel channelToAdd = SocketChannel.open();
                 channelToAdd.configureBlocking(false);
                 channelToAdd.connect(toAdd);
                 key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
 
-                if (channelToAdd.isConnectionPending())
+                /*if (channelToAdd.isConnectionPending())
                     channelToAdd.finishConnect();
 
                 //adding only connected channels and storing the other channels addresses in otherNodesAddress map in this way I shouldn't read the file ever again
                 if (channelToAdd.isConnected()) {
                     serverChannels.add(channelToAdd);
-
+                    System.out.println("Is connected, sending init: " +toAdd.toString());
                 }
+                */
             }
 
         }
-        //initializing communicate
-        comm = new NetworkPrimitives.Communicate(n,this);
 
+        /*
         Message init = new Message("init", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId());
         if (serverChannels.size() > 0) {
             for (SocketChannel ch : serverChannels)
                     sendMessage(ch, init);
-            //TODO: read here = deadlock
             //read();
+
         }
+        */
 
 
 
@@ -353,7 +353,8 @@ public class ConnectionManager {
             channelToAdd.configureBlocking(false);
             channelToAdd.connect(toAdd);
 
-            if(channelToAdd.isConnectionPending())
+            //TODO: don't know if this is right
+            while(channelToAdd.isConnectionPending())
                 channelToAdd.finishConnect();
             if (!serverChannels.contains(channelToAdd))
                 serverChannels.add(channelToAdd);
@@ -460,11 +461,10 @@ public class ConnectionManager {
     }
 
     private void accept(SelectionKey key) throws IOException {
-        ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key
-                .channel();
+
+        ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
         SocketChannel socketChannel = serverSocketChannel.accept();
         socketChannel.configureBlocking(false);
-
         socketChannel.register(selector, SelectionKey.OP_READ);
 
         System.out.println("Client listening on local port: " + socketChannel.getLocalAddress());
@@ -531,15 +531,31 @@ public class ConnectionManager {
 
     /* method for estabilishing connection to other server */
     private void finishConnection(SelectionKey key) throws IOException {
-        SocketChannel socketChannel = (SocketChannel) key.channel();
 
-        // Finish the connection. If the connection operation failed
-        // this will raise an IOException.
+
+
+        SocketChannel socketChannel = (SocketChannel) key.channel();
         try {
+            // Finish the connection. If the connection operation failed this will raise an IOException.
             if (socketChannel.finishConnect())
                 key.cancel();
+
+
+        if (socketChannel.isConnected()) {
+            serverChannels.add(socketChannel);
+            System.out.println("Is connected, sending init: " +socketChannel.toString());
+        }
+
+        Message init = new Message("init", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId());
+        sendMessage(socketChannel,init);
+
+
+        //initializing communicate, needed here to keep up of new connection
+        comm = new NetworkPrimitives.Communicate(n,this);
+
         } catch (IOException e) {
             // Cancel the channel's registration with our selector
+            System.out.println("Finish connect failed");
             key.cancel();
             return;
         }
@@ -604,19 +620,21 @@ public class ConnectionManager {
     /* writes message into buffer */
     private void sendMessage(SocketChannel s, Message m) throws IOException {
 
-        System.out.println("Sending: " + m.getRequestType() + " to " + s.getRemoteAddress());
+        if (s.isConnected()){
 
-        if (s.isConnectionPending() || !s.isConnected())
-            s.finishConnect();
-
-
-        writeBuffer.clear();
+            System.out.println("Sending: " + m.getRequestType() + " to " + s.getRemoteAddress());
+            writeBuffer.clear();
             writeBuffer.put(ED.encode(m).getBytes());
             writeBuffer.flip();
 
             while (writeBuffer.hasRemaining())
                 s.write(writeBuffer); // writing messsage to server
             writeBuffer.clear();
+        }
+        else {
+            System.out.println("Channel not connected, can't send message: " +m.getRequestType());
+
+        }
 
 
     }
