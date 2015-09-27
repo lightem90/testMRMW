@@ -20,6 +20,8 @@ public class Node {
     private FailureDetector FD;
     private ConnectionManager cm;
 
+    private final  static  int RANDOM_SEED = 60;
+
 
     private boolean isMaster;
 
@@ -70,25 +72,26 @@ public class Node {
         System.out.println("Running ...");
         while (true) {
 
+            //answering requests
             cm.run();
-            if (isMaster) {
-                //Random r = new Random();
-                //TODO: if I'm the master I will do some kind of operation in the system and then writing to the followers the data and my view (not to implement this way)
-                //for (int i = 0; i < r.nextInt(10); i++)
-                //    operation();
+            //TODO: this MUST become a thread
+            /*
+            if (FD.getLeader_id() != -1 && FD.getActiveNodes().size() >= mySett.getQuorum()) {
+                Random r = new Random();
+                try {
+                    Thread.sleep(RANDOM_SEED * 1000);
+                } catch (InterruptedException e) {
+                    System.out.println("Sleep failed");
+                    e.printStackTrace();
+                }
+                cm.operation();
             }
+            */
+
 
         }
 
     }
-
-    public void operation(){
-
-        cm.operation();
-
-    }
-
-
 
 
 

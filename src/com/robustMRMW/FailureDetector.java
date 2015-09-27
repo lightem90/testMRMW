@@ -13,7 +13,7 @@ import java.util.Set;
 public class FailureDetector {
 
 
-    private static final int MAXIMUM_HEARTBEAT_VALUE = 50;
+    private static final int MAXIMUM_HEARTBEAT_VALUE = 20;
     private HashMap<Integer,Integer> activeNodes;
     Node current;
     int leader_id;
@@ -91,9 +91,11 @@ public class FailureDetector {
     private void updateNodeLocalView(){
 
         //this gets all active nodes ids, builds a new view FIN and sends the information to the node
+        System.out.println("Old view: " + current.getLocalView());
         Set<Integer> set = activeNodes.keySet();
         View updView = new View (set);
         current.setLocalView(updView);
+        System.out.println("New view: " + current.getLocalView());
 
     }
 

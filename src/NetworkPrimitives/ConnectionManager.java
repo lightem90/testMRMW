@@ -128,8 +128,8 @@ public class ConnectionManager {
         Iterator i = otherNodesAddress.keySet().iterator();
         SelectionKey key = null;
 
-        while(i.hasNext()){
-            int id = (int)i.next();
+        while(i.hasNext()) {
+            int id = (int) i.next();
 
             if (id != n.getMySett().getNodeId()) {
 
@@ -139,33 +139,8 @@ public class ConnectionManager {
                 channelToAdd.configureBlocking(false);
                 channelToAdd.connect(toAdd);
                 key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
-
-                /*if (channelToAdd.isConnectionPending())
-                    channelToAdd.finishConnect();
-
-                //adding only connected channels and storing the other channels addresses in otherNodesAddress map in this way I shouldn't read the file ever again
-                if (channelToAdd.isConnected()) {
-                    serverChannels.add(channelToAdd);
-                    System.out.println("Is connected, sending init: " +toAdd.toString());
-                }
-                */
             }
-
         }
-
-        /*
-        Message init = new Message("init", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId());
-        if (serverChannels.size() > 0) {
-            for (SocketChannel ch : serverChannels)
-                    sendMessage(ch, init);
-            //read();
-
-        }
-        */
-
-
-
-
     }
 
 
@@ -195,48 +170,28 @@ public class ConnectionManager {
                     } else if (key.isReadable()) {
 
                         String[] tokens = readMessages(key);
+                        System.out.println("Received " + tokens.length + " message/s");
 
-                        for(String msg : tokens) {
+                        for (int i=0;i<tokens.length;i++) {
 
-                            Message m = ED.decode(msg);
-                            System.out.println("Received " + m.getRequestType() + " from node #" + m.getSenderId());
+                            Message m = ED.decode(tokens[i]);
+                            System.out.println("Message number: " + i +  ".Received " + m.getRequestType() + " from node #" + m.getSenderId());
 
-                                boolean wasInit = handleInit(m);
-
-                                /*TODO: this check could become a variable */
-                                if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum()) {
-
-                                    if (n.getFD().getLeader_id() == -1) {
-                                        System.out.println("Master is not present in the system, starting leader election routine");
-                                        //TODO: should I read here somewhere? Meaning that if some trouble happend during the l.e. any node should wait a read at least from a quorum (if there's still a quorum)
-                                        electMasterService election = new electMasterService(n.getMySett(), n.getLocalView(), this, n.getFD().getActiveNodes());
-                                        int leader = election.electMaster();
-                                        n.getFD().setLeader_id(leader);
-                                        if (leader == -1){
-                                            System.out.println("No suitable leader, querying...");
-                                            read();
-                                            System.out.println("Query ended");
-                                            continue;
-
-                                        }
-                                        if (leader == n.getMySett().getNodeId()) {
-                                            n.setIsMaster(true);
-                                            write(n.getLocalView());
-                                        }
-                                        System.out.println("Master elected with id: "+ n.getFD().getLeader_id());
-                                    }
-
-                                    //Master is present
-                                    if(!wasInit)
-                                        parseInput(m, (SocketChannel)key.channel());
-                                }
-
-
+                            //Handling init messages first, in this way I shouldn't have problem with the others messages
+                            if (!handleInit(m))
+                                parseInput(m, (SocketChannel) key.channel());
                         }
-                    } else if (key.isConnectable()) {
+
+
+                        if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
+                            startElectionRoutine();
+
+
+                    } else if (key.isConnectable())
                         finishConnection(key);
-                    }
+
                 }
+
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -343,7 +298,6 @@ public class ConnectionManager {
             channelToAdd.configureBlocking(false);
             channelToAdd.connect(toAdd);
 
-            //TODO: don't know if this is right
             while(channelToAdd.isConnectionPending())
                 channelToAdd.finishConnect();
             if (!serverChannels.contains(channelToAdd))
@@ -420,7 +374,7 @@ public class ConnectionManager {
                         rep.put(latestTag, receivedMessage.getView());
                     replica.put(receivedMessage.getSenderId(), receivedMessage);
                     break;
-
+                /*
                 case "userReadRequest":
                     read();
                     sendMessage(channel, new Message("success", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId()));
@@ -431,6 +385,8 @@ public class ConnectionManager {
                     System.out.println("Replying to request with result: success");
                     sendMessage(channel, new Message("success", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId()));
                     break;
+                    */
+                //Reading -1
                 default:
                     System.out.println("Server or reader/writer crashed");
                     if (serverChannels.contains(channel))
@@ -450,9 +406,11 @@ public class ConnectionManager {
 
     public void operation(){
 
-
-        write(n.getLocalView());
-
+        Random r = new Random(10);
+        if (r.nextInt() > 4)
+            write(n.getLocalView());
+        else
+            read();
     }
 
     private void accept(SelectionKey key) throws IOException {
@@ -538,7 +496,7 @@ public class ConnectionManager {
 
         if (socketChannel.isConnected()) {
             serverChannels.add(socketChannel);
-            System.out.println("Is connected, sending init: " +socketChannel.toString());
+            System.out.println("Is connected, sending init: " + socketChannel.getRemoteAddress().toString());
         }
 
         Message init = new Message("init", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId());
@@ -550,10 +508,30 @@ public class ConnectionManager {
 
         } catch (IOException e) {
             // Cancel the channel's registration with our selector
-            System.out.println("Finish connect failed");
             key.cancel();
             return;
         }
+    }
+
+    private void startElectionRoutine(){
+
+
+            electMasterService election = new electMasterService(n.getMySett(), n.getLocalView(), this, n.getFD().getActiveNodes());
+            int leader = election.electMaster();
+            n.getFD().setLeader_id(leader);
+            if (leader == -1){
+                System.out.println("No suitable leader, querying...");
+                read();
+                System.out.println("Query ended");
+                return;
+
+            }
+            if (leader == n.getMySett().getNodeId()) {
+                n.setIsMaster(true);
+                write(n.getLocalView());
+            }
+            System.out.println("Master elected with id: "+ n.getFD().getLeader_id());
+
     }
 
 
@@ -617,7 +595,7 @@ public class ConnectionManager {
 
         if (s.isConnected()){
 
-            System.out.println("Sending: " + m.getRequestType() + " to " + s.getRemoteAddress());
+            System.out.println("Sending: " + m.getRequestType() + " to " + s.getRemoteAddress().toString());
             writeBuffer.clear();
             writeBuffer.put(ED.encode(m).getBytes());
             writeBuffer.flip();
