@@ -173,8 +173,7 @@ public class ConnectionManager {
     public void run() {
 
             try {
-                // listening for connections, initializes the selector with all
-                // socket ready for I/O operations
+                // listening for connections, initializes the selector with all socket ready for I/O operations
                 selector.select();
 
                 Iterator<SelectionKey> selectedKeys = selector.selectedKeys()
@@ -195,20 +194,12 @@ public class ConnectionManager {
                         accept(key);
                     } else if (key.isReadable()) {
 
-                        String[] tokens;
-                        try{
-                            tokens = readMessages(key);
-                        } catch (IOException e) {
-                            key.channel().close();
-                            key.cancel();
-                            serverChannels.remove(key.channel());
-                            System.out.println("Server or reader/writer crashed");
-                            comm = new Communicate(n,this);
-                            continue;
-                        }
+                        String[] tokens = readMessages(key);
+
                         for(String msg : tokens) {
 
                             Message m = ED.decode(msg);
+                            System.out.println("Received " + m.getRequestType() + " from node #" + m.getSenderId());
 
                                 boolean wasInit = handleInit(m);
 
@@ -256,8 +247,6 @@ public class ConnectionManager {
 
     private boolean handleInit(Message receivedMessage) throws IOException {
 
-        System.out.println("Received " + receivedMessage.getRequestType() + " from node #" + receivedMessage.getSenderId());
-
         switch (receivedMessage.getRequestType()) {
                     /*New messages to handle new server connection, init_ack is used only to update client FD, init connects the new client and updates communicate obj (chans, serverNumber etc..) */
                 case "init":
@@ -289,9 +278,10 @@ public class ConnectionManager {
 
                     /*Need this to send correct view to older node (with init I send the view with only me active */
                 case "end_handshake":
-                    System.out.println("Updating view for newly connected node");
+                    System.out.println("Updating view after newly connected node: " + n.getLocalView().getValue());
                     n.getFD().updateFDForNode(receivedMessage.getSenderId());
                     replica.put(receivedMessage.getSenderId(),receivedMessage);
+
                     return true;
                 default:
                     return false;
@@ -377,7 +367,6 @@ public class ConnectionManager {
     private void parseInput(Message receivedMessage, SocketChannel channel) throws IOException {
 
         Tag maxTag = findMaxTagFromSet(rep);
-        System.out.println("Received message '" + receivedMessage.getRequestType() + "' from node #" + receivedMessage.getSenderId());
 
             switch (receivedMessage.getRequestType()) {
 
@@ -442,6 +431,12 @@ public class ConnectionManager {
                     System.out.println("Replying to request with result: success");
                     sendMessage(channel, new Message("success", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId()));
                     break;
+                default:
+                    System.out.println("Server or reader/writer crashed");
+                    if (serverChannels.contains(channel))
+                        serverChannels.remove(channel);
+                    channel.close();
+                    comm = new Communicate(n,this);
             }
 
 
@@ -641,17 +636,28 @@ public class ConnectionManager {
 
     private String[] readMessages(SelectionKey key) throws IOException {
 
-
-        readBuffer.clear();
         String message = "";
-        SocketChannel channel = (SocketChannel) key.channel();
+        try{
+
+            readBuffer.clear();
+
+            SocketChannel channel = (SocketChannel) key.channel();
             while (channel.read(readBuffer) > 0) {
                 // flip the buffer to start reading
                 readBuffer.flip();
                 message += Charset.defaultCharset().decode(readBuffer);
             }
 
-            return message.split("&");
+        } catch (IOException e) {
+            System.out.println("Server or reader/writer crashed in read");
+            key.channel().close();
+            key.cancel();
+            serverChannels.remove(key.channel());
+            key.channel().close();
+            comm = new Communicate(n,this);
+        }
+
+        return message.split("&");
 
     }
 

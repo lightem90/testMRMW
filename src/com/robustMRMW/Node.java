@@ -73,7 +73,7 @@ public class Node {
             cm.run();
             if (isMaster) {
                 //Random r = new Random();
-                //TODO: if I'm the master I will do some kind of operation in the system and then writing to the followers the datas and my view (not to implement this way)
+                //TODO: if I'm the master I will do some kind of operation in the system and then writing to the followers the data and my view (not to implement this way)
                 //for (int i = 0; i < r.nextInt(10); i++)
                 //    operation();
             }
