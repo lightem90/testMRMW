@@ -77,6 +77,7 @@ public class electMasterService {
         }
 
         if (seemCrd == null || seemCrd.isEmpty()) noCrd = true;
+        else System.out.println("seemCrd contains: " +seemCrd.toString());
         return proposeMaster();
 
     }
@@ -156,6 +157,7 @@ public class electMasterService {
                     return o2.compareTo(o1);
                 }
             });
+            System.out.println("seemCrd sorted is: " +seemCrd.toString());
             masterId = seemCrd.get(0);
         }
 

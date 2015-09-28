@@ -25,9 +25,7 @@ import java.util.*;
 public class ConnectionManager {
 
     //Class constants
-    //private final static String ADDRESS_PATH = "/groups/Gulliver/virtualSynchrony/address.txt";
     private final static String ADDRESS_PATH = "address.txt";
-    //private final static String ADDRESS = "localhost";
     private final static int PORT = 3000;
 
 
@@ -248,10 +246,11 @@ public class ConnectionManager {
     /* Needed to update the replica message: we imply that if we receive a init message all the other nodes receive the same message too */
     private void updateRep (int id) {
 
-        Collection<Message> c = replica.values();
+        Iterator<Integer> i = replica.keySet().iterator();
 
-        if (c.size() > 0) {
-            for (Message m : c) {
+        if (replica.size() > 0) {
+            while (i.hasNext()) {
+                Message m = replica.get(i.next());
 
                 if (m.getSenderId() != id) {
 
