@@ -91,11 +91,11 @@ public class FailureDetector {
     private void updateNodeLocalView(){
 
         //this gets all active nodes ids, builds a new view FIN and sends the information to the node
-        System.out.println("Old view: " + current.getLocalView());
+        System.out.println("Old view: " + current.getLocalView().getValue());
         Set<Integer> set = activeNodes.keySet();
         View updView = new View (set);
         current.setLocalView(updView);
-        System.out.println("New view: " + current.getLocalView());
+        System.out.println("New view: " + current.getLocalView().getValue());
 
     }
 

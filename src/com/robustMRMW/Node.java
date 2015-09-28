@@ -73,8 +73,26 @@ public class Node {
         while (true) {
 
             //answering requests
-            cm.run();
-            //TODO: this MUST become a thread
+            cm.run();/*
+            if (FD.getLeader_id() != -1 && FD.getActiveNodes().size() >= mySett.getQuorum()) {
+
+                Thread operate = new Thread() {
+                public void run() {
+                    try {
+                        Thread.sleep(RANDOM_SEED * 1000);
+
+                        if (isMaster)
+                            cm.operationMaster();
+                        else cm.operation();
+
+                    } catch(InterruptedException v) {
+                        System.out.println(v);
+                    }
+                }
+            };
+
+            operate.start();
+            }
             /*
             if (FD.getLeader_id() != -1 && FD.getActiveNodes().size() >= mySett.getQuorum()) {
                 Random r = new Random();

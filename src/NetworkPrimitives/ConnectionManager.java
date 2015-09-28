@@ -404,15 +404,6 @@ public class ConnectionManager {
 
     //Networking functions
 
-    public void operation(){
-
-        Random r = new Random(10);
-        if (r.nextInt() > 4)
-            write(n.getLocalView());
-        else
-            read();
-    }
-
     private void accept(SelectionKey key) throws IOException {
 
         ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
@@ -516,9 +507,10 @@ public class ConnectionManager {
     private void startElectionRoutine(){
 
 
-            electMasterService election = new electMasterService(n.getMySett(), n.getLocalView(), this, n.getFD().getActiveNodes());
-            int leader = election.electMaster();
-            n.getFD().setLeader_id(leader);
+        electMasterService election = new electMasterService(n.getMySett(), n.getLocalView(), this, n.getFD().getActiveNodes());
+        int leader = election.electMaster();
+        n.getFD().setLeader_id(leader);
+        System.out.println("Master elected with id: "+ n.getFD().getLeader_id());
             if (leader == -1){
                 System.out.println("No suitable leader, querying...");
                 read();
@@ -530,7 +522,6 @@ public class ConnectionManager {
                 n.setIsMaster(true);
                 write(n.getLocalView());
             }
-            System.out.println("Master elected with id: "+ n.getFD().getLeader_id());
 
     }
 
@@ -637,6 +628,22 @@ public class ConnectionManager {
 
         return message.split("&");
 
+    }
+
+    //master allowed op
+    public void operationMaster(){
+
+        Random r = new Random(10);
+        if (r.nextInt() > 4)
+            write(n.getLocalView());
+        else
+            read();
+    }
+
+    //followers allowed op
+    public void operation(){
+
+        read();
     }
 
 
