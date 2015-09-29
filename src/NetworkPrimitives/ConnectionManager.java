@@ -84,6 +84,7 @@ public class ConnectionManager {
             for (i = 0; i < lines.size(); i++) {
 
                 String line = lines.get(i);
+                System.out.println(line);
                 String[] tokens = line.split(" ");
 
                 ids.add(Integer.parseInt(tokens[0]));
@@ -147,6 +148,7 @@ public class ConnectionManager {
 
             try {
                 // listening for connections, initializes the selector with all socket ready for I/O operations
+                boolean initIsOver = true;
                 selector.select();
 
                 Iterator<SelectionKey> selectedKeys = selector.selectedKeys()
@@ -170,25 +172,24 @@ public class ConnectionManager {
                         String[] tokens = readMessages(key);
                         System.out.println("Received " + tokens.length + " message/s");
 
-                        for (int i=0;i<tokens.length;i++) {
+                        for (String msg : tokens) {
 
-                            Message m = ED.decode(tokens[i]);
-                            System.out.println("Message number: " + i +  ".Received " + m.getRequestType() + " from node #" + m.getSenderId());
+
+                            Message m = ED.decode(msg);
+                            n.getFD().updateFDForNode(m.getSenderId());
+                            System.out.println("Received " + m.getRequestType() + " from node #" + m.getSenderId());
 
                             //Handling init messages first, in this way I shouldn't have problem with the others messages
-                            if (!handleInit(m))
+                            initIsOver = handleInit(m,initIsOver);
+                            if (initIsOver)
                                 parseInput(m, (SocketChannel) key.channel());
                         }
-
-
-                        if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
-                            startElectionRoutine();
 
 
                     } else if (key.isConnectable())
                         finishConnection(key);
 
-                }
+                    }
 
 
             } catch (Exception e) {
@@ -198,18 +199,18 @@ public class ConnectionManager {
 
     }
 
-    private boolean handleInit(Message receivedMessage) throws IOException {
+    private boolean handleInit(Message receivedMessage, boolean flag) throws IOException {
 
         switch (receivedMessage.getRequestType()) {
                     /*New messages to handle new server connection, init_ack is used only to update client FD, init connects the new client and updates communicate obj (chans, serverNumber etc..) */
                 case "init":
-                    //update FD, serverChannels and serverCount
-                    n.getFD().updateFDForNode(receivedMessage.getSenderId());
+                    //update serverChannels and serverCount
                     replica.put(receivedMessage.getSenderId(),receivedMessage);
-                    handleConnectionRequest("init_ack",receivedMessage.getSenderId());
+                    System.out.println("Put:" + receivedMessage.getRequestType() + " in Replica for:" +receivedMessage.getSenderId());
                     updateRep(receivedMessage.getSenderId());
                     comm = new Communicate(n,this);
-                    return true;
+                    handleConnectionRequest("init_ack",receivedMessage.getSenderId());
+                    return false;
 
                 case "init_ack":
 
@@ -219,25 +220,27 @@ public class ConnectionManager {
                     else {
                         System.out.println("Leader is: " + receivedMessage.getTag().getLabel());
                         n.getFD().setLeader_id(receivedMessage.getTag().getLabel());
-                        //TODO: what to do you received view? If there's a quorum the view should be valid
                     }
 
-                    //Setting the leader Id from response, I don't check which value it has
-                    n.getFD().setLeader_id(receivedMessage.getTag().getId());
-                    n.getFD().updateFDForNode(receivedMessage.getSenderId());
+                    //n.getFD().setLeader_id(receivedMessage.getTag().getId());
                     replica.put(receivedMessage.getSenderId(),receivedMessage);
+                    System.out.println("Sending my view: " + n.getLocalView().getValue());
                     handleConnectionRequest("end_handshake",receivedMessage.getSenderId());
                     return true;
 
                     /*Need this to send correct view to older node (with init I send the view with only me active */
                 case "end_handshake":
-                    System.out.println("Updating view after newly connected node: " + n.getLocalView().getValue());
-                    n.getFD().updateFDForNode(receivedMessage.getSenderId());
+                    System.out.println("Updating replica for:" + receivedMessage.getSenderId() + " with view: " + receivedMessage.getView().getValue());
                     replica.put(receivedMessage.getSenderId(),receivedMessage);
+
+                    //This must start as soon as we know a quorum is present
+                    if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
+                        startElectionRoutine();
 
                     return true;
                 default:
-                    return false;
+                    if (flag) return true;
+                            else return false;
         }
     }
 
@@ -338,6 +341,8 @@ public class ConnectionManager {
                         break;
                     }
 
+                    //only master writes
+                    //n.getFD().setLeader_id(receivedMessage.getSenderId());
                     n.setLocalTag(newTag);
                     n.setLocalView(receivedMessage.getView());
                     n.getLocalView().setStatus(View.Status.PRE);

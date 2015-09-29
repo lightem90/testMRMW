@@ -51,13 +51,17 @@ public class electMasterService {
 
     public int electMaster(){
 
+        System.out.println("There are: " + mSet.getNumberOfNodes() + " nodes");
         seemCrd = new ArrayList<>(mSet.getNumberOfNodes());
         Set<Integer> idList = failureDetector.keySet();
+        System.out.print("Failure detector says these nodes are active: " + idList.toString());
 
         for (Integer l : idList) {
+            System.out.println("Node: " + l);
 
             //Getting all the information about active node l (Last message with proper view received)
             if (rep.containsKey(l)) {
+                System.out.println("Contained");
                 Message m = rep.get(l);
                 View nodeView = m.getView();
                 nodeView.setArrayFromValueString();
@@ -68,7 +72,7 @@ public class electMasterService {
             }
             else {
                 //Should be me
-
+                System.out.println("Not in Replica");
                 if (failureDetector.size() >= mSet.getQuorum() && isContained(view,mSet.getNodeId()))
                     seemCrd.add(mSet.getNodeId());
 
@@ -190,12 +194,13 @@ public class electMasterService {
 
     private boolean isContained (View mView, int id){
 
-
+        System.out.println("Is: " + id + " contained in:" + mView.getValue());
         //for each nodeID in the propView
         for(int i : mView.getIdArray()){
 
             if (rep.containsKey(i)) {
                 Message m = rep.get(i);
+                System.out.println("Node " + i + " view contains:" + m.getView().getValue() + " must check for " + id + " presence");
                 View v = m.getView();
                 v.setArrayFromValueString();
 
