@@ -56,7 +56,7 @@ public class electMasterService {
         System.out.println("There are: " + mSet.getNumberOfNodes() + " nodes");
         seemCrd = new ArrayList<>(mSet.getNumberOfNodes());
         Set<Integer> idList = failureDetector.keySet();
-        System.out.print("Failure detector says these nodes are active: " + idList.toString());
+        System.out.println("Failure detector says these nodes are active: " + idList.toString());
 
         for (Integer l : idList) {
             System.out.println("Node: " + l);
@@ -198,6 +198,7 @@ public class electMasterService {
     private boolean isContained (View mView, int id){
 
         System.out.println("Is: " + id + " contained in:" + mView.getValue());
+        mView.setArrayFromValueString();
         //for each nodeID in the propView
         for(int i : mView.getIdArray()){
 

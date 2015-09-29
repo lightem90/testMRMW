@@ -176,11 +176,11 @@ public class ConnectionManager {
 
 
                             Message m = ED.decode(msg);
+                            System.out.println("Received " + m.getRequestType() + " from node #" + m.getSenderId());
                             //ignoring invalid messages
                             if (m.getRequestType().equals(-1) && m.getSenderId() == -1)
                                 continue;
                             n.getFD().updateFDForNode(m.getSenderId());
-                            System.out.println("Received " + m.getRequestType() + " from node #" + m.getSenderId());
 
                             //Handling init messages first, in this way I shouldn't have problem with the others messages
                             initIsOver = handleInit(m,initIsOver);
@@ -483,10 +483,8 @@ public class ConnectionManager {
 
     }
 
-    /* method for estabilishing connection to other server */
+    /* method for establishing connection to other server */
     private void finishConnection(SelectionKey key) throws IOException {
-
-
 
         SocketChannel socketChannel = (SocketChannel) key.channel();
         try {
@@ -497,7 +495,18 @@ public class ConnectionManager {
 
         if (socketChannel.isConnected()) {
             serverChannels.add(socketChannel);
-            System.out.println("Is connected, sending init: " + socketChannel.getRemoteAddress().toString());
+
+            //update view as soon as I see an active connection
+            for(Integer id : otherNodesAddress.keySet()){
+
+                if (otherNodesAddress.get(id).equals(socketChannel)) {
+                    System.out.print("Detected connection from:" + id);
+                    n.getFD().updateFDForNode(id);
+                }
+            }
+
+            System.out.println(", sending init: " + socketChannel.getRemoteAddress().toString());
+            System.out.println("New view: " +n.getLocalView().getValue());
         }
 
         Message init = new Message("init", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId());
