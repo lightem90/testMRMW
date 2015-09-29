@@ -235,11 +235,6 @@ public class ConnectionManager {
                 case "end_handshake":
                     System.out.println("Updating replica for:" + receivedMessage.getSenderId() + " with view: " + receivedMessage.getView().getValue());
                     replica.put(receivedMessage.getSenderId(), receivedMessage);
-
-                    //This must start as soon as we know a quorum is present
-                    if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
-                        startElectionRoutine();
-
                     return true;
                 default:
                     if (flag) return true;
@@ -499,15 +494,15 @@ public class ConnectionManager {
             //update view as soon as I see an active connection
             for(Integer id : otherNodesAddress.keySet()){
 
-                if (otherNodesAddress.get(id).equals(socketChannel)) {
-                    System.out.print("Detected connection from:" + id);
+                if (otherNodesAddress.get(id).equals(socketChannel.getRemoteAddress())) {
+                    System.out.println("Detected connection from:" + id);
                     n.getFD().updateFDForNode(id);
                 }
             }
-
-            System.out.println(", sending init: " + socketChannel.getRemoteAddress().toString());
-            System.out.println("New view: " +n.getLocalView().getValue());
         }
+        //This must start as soon as we know a quorum is present
+        if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
+            startElectionRoutine();
 
         Message init = new Message("init", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId());
         sendMessage(socketChannel,init);
