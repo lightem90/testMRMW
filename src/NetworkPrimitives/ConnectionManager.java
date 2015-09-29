@@ -176,6 +176,9 @@ public class ConnectionManager {
 
 
                             Message m = ED.decode(msg);
+                            //ignoring invalid messages
+                            if (m.getRequestType().equals(-1) && m.getSenderId() == -1)
+                                continue;
                             n.getFD().updateFDForNode(m.getSenderId());
                             System.out.println("Received " + m.getRequestType() + " from node #" + m.getSenderId());
 
@@ -231,7 +234,7 @@ public class ConnectionManager {
                     /*Need this to send correct view to older node (with init I send the view with only me active */
                 case "end_handshake":
                     System.out.println("Updating replica for:" + receivedMessage.getSenderId() + " with view: " + receivedMessage.getView().getValue());
-                    replica.put(receivedMessage.getSenderId(),receivedMessage);
+                    replica.put(receivedMessage.getSenderId(), receivedMessage);
 
                     //This must start as soon as we know a quorum is present
                     if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
@@ -248,6 +251,8 @@ public class ConnectionManager {
 
     /* Needed to update the replica message: we imply that if we receive a init message all the other nodes receive the same message too */
     private void updateRep (int id) {
+
+        if (id != -1){
 
         Iterator<Integer> i = replica.keySet().iterator();
 
@@ -274,6 +279,7 @@ public class ConnectionManager {
 
 
             }
+        }
         }
     }
 
@@ -510,7 +516,7 @@ public class ConnectionManager {
 
     private void startElectionRoutine(){
 
-
+        System.out.println("This replica (CM) contains: " + replica.keySet().toString());
         electMasterService election = new electMasterService(n.getMySett(), n.getLocalView(), this, n.getFD().getActiveNodes());
         int leader = election.electMaster();
         n.getFD().setLeader_id(leader);

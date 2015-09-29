@@ -51,6 +51,8 @@ public class electMasterService {
 
     public int electMaster(){
 
+        System.out.println("This replica (Election) contains: " + rep.keySet().toString());
+
         System.out.println("There are: " + mSet.getNumberOfNodes() + " nodes");
         seemCrd = new ArrayList<>(mSet.getNumberOfNodes());
         Set<Integer> idList = failureDetector.keySet();
@@ -61,10 +63,11 @@ public class electMasterService {
 
             //Getting all the information about active node l (Last message with proper view received)
             if (rep.containsKey(l)) {
-                System.out.println("Contained");
                 Message m = rep.get(l);
                 View nodeView = m.getView();
                 nodeView.setArrayFromValueString();
+
+                System.out.println("Contained with view: " + nodeView.getValue());
 
                 //isContained checks if l has a quorum for his view and if he is contained in each view of the nodes of his view (can't check proposed view and FD since we don't have replicas)
                 if ((nodeView.getIdArray().size() >= mSet.getQuorum()) && isContained(nodeView, l))
@@ -205,13 +208,13 @@ public class electMasterService {
                 v.setArrayFromValueString();
 
                 //Check if mId is in the view (list of active nodes of node i)
-                if (v.getIdArray().contains(id))
-                    return true;
+                if (!v.getIdArray().contains(id))
+                    return false;
             }
         }
 
 
-        return false;
+        return true;
     }
 
 
