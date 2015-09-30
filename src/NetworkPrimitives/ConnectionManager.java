@@ -150,6 +150,7 @@ public class ConnectionManager {
                 // listening for connections, initializes the selector with all socket ready for I/O operations
                 boolean initIsOver = true;
                 selector.select();
+                boolean flag = true;
 
                 Iterator<SelectionKey> selectedKeys = selector.selectedKeys()
                         .iterator();
@@ -185,12 +186,14 @@ public class ConnectionManager {
                             //Handling init messages first, in this way I shouldn't have problem with the others messages
                             if (handleInit(m))
                                 parseInput(m, (SocketChannel) key.channel());
-                            if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getMySett().getNodeId() == 5) {
+
+                            if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getMySett().getNodeId() == 7 && flag) {
                                 for(int i = 0;i<10;i++) {
                                     System.out.println("Op: " +i);
                                     read();
                                     write(n.getLocalView());
                                 }
+                                flag = false;
                             }
                         }
 
@@ -217,8 +220,8 @@ public class ConnectionManager {
                     replica.put(receivedMessage.getSenderId(),receivedMessage);
                     System.out.println("Put:" + receivedMessage.getRequestType() + " in Replica for:" +receivedMessage.getSenderId());
                     updateRep(receivedMessage.getSenderId());
-                    comm = new Communicate(n,this);
                     handleConnectionRequest("init_ack",receivedMessage.getSenderId());
+                    comm = new Communicate(n,this);
                     return false;
 
                 case "init_ack":

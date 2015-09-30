@@ -67,10 +67,15 @@ public class Communicate {
 				n.getLocalView(), n.getMySett().getNodeId());
 
 		Message[] values = waitForQuorum(request);
+		if (values == null) {
+
+			System.out.println("Can't complete query");
+			return  null;
+		}
 
 		//last tag CAN'T be smaller than local tag
 		lastTag = findMaxTagFromMessages(values,n.getLocalTag());
-		if (lastTag.compareTo(n.getLocalTag()) >= 0) //TODO: this check is useless, this condition is met in findMaxTagFromMessages
+		if (lastTag.compareTo(n.getLocalTag()) >= 0)
 			return lastTag;
 		return null;
 	}
@@ -96,6 +101,11 @@ public class Communicate {
 				n.getMySett().getNodeId());
 
 		Message[] values = waitForQuorum(request);
+		if (values == null) {
+
+			System.out.println("Can't complete query");
+			return  null;
+		}
 		int i = 0;
 		while (values[i] == null)
 			i++;
@@ -114,6 +124,15 @@ public class Communicate {
 		return !(waitForQuorum(request) == null);
 	}
 	private Message[] waitForQuorum(Message request) {
+
+
+		if (activeServers < n.getMySett().getQuorum()){
+
+
+			System.out.println("Quorum not present for communicate: " + activeServers + " should be: "+ n.getMySett().getQuorum());
+			return null;
+
+		}
 
 		Message reply;
 
@@ -167,7 +186,7 @@ public class Communicate {
 
 			// Start receiving acks until quorum is reached.
 			// In case of ack from a previous query, ignore the message and send the new query
-			while (ackCounter < activeServers / 2 + 1) {
+			while (ackCounter < n.getMySett().getQuorum()) {
 
 				for (int i = 0; i < activeServers; i++) {
 					readBuffer.clear();
