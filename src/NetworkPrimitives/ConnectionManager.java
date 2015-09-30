@@ -183,9 +183,15 @@ public class ConnectionManager {
                             n.getFD().updateFDForNode(m.getSenderId());
 
                             //Handling init messages first, in this way I shouldn't have problem with the others messages
-                            initIsOver = handleInit(m,initIsOver);
-                            if (initIsOver)
+                            if (handleInit(m))
                                 parseInput(m, (SocketChannel) key.channel());
+                            if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getMySett().getNodeId() == 5) {
+                                for(int i = 0;i<10;i++) {
+                                    System.out.println("Op: " +i);
+                                    read();
+                                    write(n.getLocalView());
+                                }
+                            }
                         }
 
 
@@ -202,7 +208,7 @@ public class ConnectionManager {
 
     }
 
-    private boolean handleInit(Message receivedMessage, boolean flag) throws IOException {
+    private boolean handleInit(Message receivedMessage) throws IOException {
 
         switch (receivedMessage.getRequestType()) {
                     /*New messages to handle new server connection, init_ack is used only to update client FD, init connects the new client and updates communicate obj (chans, serverNumber etc..) */
@@ -228,21 +234,21 @@ public class ConnectionManager {
                     //n.getFD().setLeader_id(receivedMessage.getTag().getId());
                     replica.put(receivedMessage.getSenderId(),receivedMessage);
                     System.out.println("Sending my view: " + n.getLocalView().getValue());
-                    handleConnectionRequest("end_handshake",receivedMessage.getSenderId());
+                    //handleConnectionRequest("end_handshake",receivedMessage.getSenderId());
                     return true;
 
-                    /*Need this to send correct view to older node (with init I send the view with only me active */
+                    /*Need this to send correct view to older node (with init I send the view with only me active
                 case "end_handshake":
                     System.out.println("Updating replica for:" + receivedMessage.getSenderId() + " with view: " + receivedMessage.getView().getValue());
                     replica.put(receivedMessage.getSenderId(), receivedMessage);
 
                     //This must start as soon as we know a quorum is present
-                    if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
-                        startElectionRoutine();
+                    //if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
+                    //    startElectionRoutine();
                     return true;
+                    */
                 default:
-                    if (flag) return true;
-                            else return false;
+                    return true;
         }
     }
 
@@ -426,6 +432,7 @@ public class ConnectionManager {
     // if a read request arises from selector
     private void read() {
 
+        long tStart = System.currentTimeMillis();
         Tag maxTag;
         if ((maxTag = comm.query()) == null)
             return;
@@ -440,11 +447,22 @@ public class ConnectionManager {
                 e.printStackTrace();
             }
         }
+        long tEnd = System.currentTimeMillis();
+        long tDelta = tEnd - tStart;
+
+        double elapsedSeconds = tDelta / 1000.0;
+
+        System.out.println("Elapsed time for read: " + elapsedSeconds);
+
+
 
     }
 
     // if a write request arises from selector
     private void write(View newView) {
+
+        long tStart = System.currentTimeMillis();
+
         Tag maxTag;
         if ((maxTag = comm.query()) == null)
             return;
@@ -459,6 +477,12 @@ public class ConnectionManager {
             System.out.println("WE DID IT REDDIT");
         else
             System.out.println("WE LOST");
+
+        long tEnd = System.currentTimeMillis();
+        long tDelta = tEnd - tStart;
+        double elapsedSeconds = tDelta / 1000.0;
+
+        System.out.println("Elapsed time for write: " + elapsedSeconds);
 
     }
 
