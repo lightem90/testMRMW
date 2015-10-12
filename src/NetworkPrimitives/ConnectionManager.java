@@ -127,7 +127,7 @@ public class ConnectionManager {
         Iterator i = otherNodesAddress.keySet().iterator();
         SelectionKey key = null;
 
-        while(i.hasNext()) {
+        while (i.hasNext()) {
             int id = (int) i.next();
 
             if (id != n.getMySett().getNodeId()) {
@@ -137,9 +137,15 @@ public class ConnectionManager {
                 SocketChannel channelToAdd = SocketChannel.open();
                 channelToAdd.configureBlocking(false);
                 channelToAdd.connect(toAdd);
+                /*if (channelToAdd.isConnected()) {
+                    System.out.println("Connecting to: " + channelToAdd.getRemoteAddress());
+                    serverChannels.add(channelToAdd);
+                    n.getFD().updateFDForNode(id);
+                }*/
                 key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
             }
         }
+        comm = new NetworkPrimitives.Communicate(n,this);
     }
 
 
@@ -148,7 +154,6 @@ public class ConnectionManager {
 
             try {
                 // listening for connections, initializes the selector with all socket ready for I/O operations
-                boolean initIsOver = true;
                 selector.select();
                 boolean flag = true;
 
@@ -187,7 +192,8 @@ public class ConnectionManager {
                             if (handleInit(m))
                                 parseInput(m, (SocketChannel) key.channel());
 
-                            if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getMySett().getNodeId() == 7 && flag) {
+
+                            if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getMySett().getNodeId() == 26 && flag) {
                                 for(int i = 0;i<10;i++) {
                                     System.out.println("Op: " +i);
                                     read();
@@ -195,6 +201,18 @@ public class ConnectionManager {
                                 }
                                 flag = false;
                             }
+
+
+
+
+                            /*for (int i = 1;i<4;i++){
+                                if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getMySett().getNodeId() == i)
+                                    while(true)
+                                        write(n.getLocalView());
+                            }
+                            */
+
+
                         }
 
 
@@ -219,7 +237,7 @@ public class ConnectionManager {
                     //update serverChannels and serverCount
                     replica.put(receivedMessage.getSenderId(),receivedMessage);
                     System.out.println("Put:" + receivedMessage.getRequestType() + " in Replica for:" +receivedMessage.getSenderId());
-                    updateRep(receivedMessage.getSenderId());
+                    //updateRep(receivedMessage.getSenderId());
                     handleConnectionRequest("init_ack",receivedMessage.getSenderId());
                     comm = new Communicate(n,this);
                     return false;
@@ -513,6 +531,10 @@ public class ConnectionManager {
     private void finishConnection(SelectionKey key) throws IOException {
 
         SocketChannel socketChannel = (SocketChannel) key.channel();
+
+
+        if (socketChannel.isConnected())
+            return;
         try {
             // Finish the connection. If the connection operation failed this will raise an IOException.
             if (socketChannel.finishConnect())
@@ -526,8 +548,8 @@ public class ConnectionManager {
             for(Integer id : otherNodesAddress.keySet()){
 
                 if (otherNodesAddress.get(id).equals(socketChannel.getRemoteAddress())) {
-                    System.out.println("Detected connection from:" + id);
                     n.getFD().updateFDForNode(id);
+                    System.out.println("Detected connection from:" + id + " new view:" + n.getLocalView());
                 }
             }
         }

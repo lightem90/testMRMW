@@ -126,7 +126,8 @@ public class Communicate {
 	private Message[] waitForQuorum(Message request) {
 
 
-		if (activeServers < n.getMySett().getQuorum()){
+		//-1 one because for example on 10 nodes the minimum is 5 because I'm the sixth
+		if (activeServers < n.getMySett().getQuorum()-1){
 
 
 			System.out.println("Quorum not present for communicate: " + activeServers + " should be: "+ n.getMySett().getQuorum());
@@ -186,7 +187,7 @@ public class Communicate {
 
 			// Start receiving acks until quorum is reached.
 			// In case of ack from a previous query, ignore the message and send the new query
-			while (ackCounter < n.getMySett().getQuorum()) {
+			while (ackCounter < n.getMySett().getQuorum()-1) {
 
 				for (int i = 0; i < activeServers; i++) {
 					readBuffer.clear();

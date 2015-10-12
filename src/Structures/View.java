@@ -55,7 +55,9 @@ public class View {
 		idArray = new ArrayList<Integer>();
 
 		for (int i = 0;i <tokens.length; i++)
-		idArray.add(Integer.parseInt(tokens[i]));
+			if (!idArray.contains(Integer.parseInt(tokens[i])))
+				idArray.add(Integer.parseInt(tokens[i]));
+
 
 	}
 
