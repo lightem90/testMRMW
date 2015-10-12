@@ -88,11 +88,16 @@ public class ConnectionManager {
                 String[] tokens = line.split(" ");
 
                 ids.add(Integer.parseInt(tokens[0]));
-                if (Integer.parseInt(tokens[0]) == n.getMySett().getNodeId())
-                    hostAddress = new InetSocketAddress(tokens[1],PORT);
-                else
-                    otherNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(tokens[1],PORT));
 
+                //port is handled differently on EMULAB, lines with "local" next to them are for local lines with "emulab" are for emulab
+                String[] portTokens = tokens[1].split(":"); //local
+
+                if (Integer.parseInt(tokens[0]) == n.getMySett().getNodeId())
+                    //hostAddress = new InetSocketAddress(tokens[1],PORT); //emulab
+                    hostAddress = new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
+                else
+                    //otherNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(tokens[1],PORT)); //emulav
+                    otherNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1]))); //local
             }
             serverCount = ids.size();
 
@@ -169,6 +174,10 @@ public class ConnectionManager {
                         accept(key);
                     } else if (key.isReadable()) {
 
+                        //This must start as soon as we know a quorum is present
+                        if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
+                            startElectionRoutine();
+
                         String[] tokens = readMessages(key);
                         System.out.println("Received " + tokens.length + " message/s");
 
@@ -229,17 +238,13 @@ public class ConnectionManager {
                     replica.put(receivedMessage.getSenderId(),receivedMessage);
                     System.out.println("Sending my view: " + n.getLocalView().getValue());
                     handleConnectionRequest("end_handshake",receivedMessage.getSenderId());
-                    return true;
+                    return false;
 
                     /*Need this to send correct view to older node (with init I send the view with only me active */
                 case "end_handshake":
                     System.out.println("Updating replica for:" + receivedMessage.getSenderId() + " with view: " + receivedMessage.getView().getValue());
                     replica.put(receivedMessage.getSenderId(), receivedMessage);
-
-                    //This must start as soon as we know a quorum is present
-                    if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
-                        startElectionRoutine();
-                    return true;
+                    return false;
                 default:
                     if (flag) return true;
                             else return false;
@@ -397,7 +402,7 @@ public class ConnectionManager {
                     */
                 //Reading -1
                 default:
-                    System.out.println("Server or reader/writer crashed");
+                    System.out.println("Server or reader/writer crashed" +receivedMessage.getRequestType());
                     if (serverChannels.contains(channel))
                         serverChannels.remove(channel);
                     channel.close();
@@ -556,7 +561,7 @@ public class ConnectionManager {
     */
 
 
-    /* finds the hidhest tag in rep map */
+    /* finds the highest tag in rep map */
     private Tag findMaxTagFromSet(Map<Tag, View> map) {
 
         //the minimum tag that we have is the localTag (initialized to id,0,0 at the beginning)
