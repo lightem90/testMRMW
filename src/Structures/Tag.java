@@ -7,7 +7,6 @@ public class Tag implements Comparable<Tag>{
 
 	//we can't send an infinite counter list so we limit the size of it
 	private static int MAXIMUM_LIST_SIZE = 10;
-	private static int THRESHOLD = 100;
 
 	private int id;
 	private int label; //not really correct
@@ -65,7 +64,7 @@ public class Tag implements Comparable<Tag>{
 
 	//we use only 2^32 values of counter (is 2^64), so we have to check if the label is exhausted or not
 	public boolean isExhausted(){
-		if (this.getCounters().getFirst().getCounter()+1 >= Integer.MAX_VALUE-1)
+		if (this.getCounters().getFirst().getCounter()+1 >= Integer.MAX_VALUE/1000000)
 			return true;
 		else return  false;
 	}

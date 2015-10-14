@@ -101,7 +101,7 @@ public class ConnectionManager {
                 socketSelector = Selector.open();
                 ServerSocketChannel serverChannel = ServerSocketChannel.open();
                 serverChannel.configureBlocking(false);
-                System.out.println("Listening socket at: "+hostAddress.toString());
+                System.out.println("Binding to address: " + hostAddress.toString());
                 serverChannel.socket().bind(hostAddress);
                 hostAddress = serverChannel.getLocalAddress();
                 serverChannel.register(socketSelector, SelectionKey.OP_ACCEPT);
@@ -137,11 +137,6 @@ public class ConnectionManager {
                 SocketChannel channelToAdd = SocketChannel.open();
                 channelToAdd.configureBlocking(false);
                 channelToAdd.connect(toAdd);
-                /*if (channelToAdd.isConnected()) {
-                    System.out.println("Connecting to: " + channelToAdd.getRemoteAddress());
-                    serverChannels.add(channelToAdd);
-                    n.getFD().updateFDForNode(id);
-                }*/
                 key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
             }
         }
@@ -155,7 +150,6 @@ public class ConnectionManager {
             try {
                 // listening for connections, initializes the selector with all socket ready for I/O operations
                 selector.select();
-                boolean flag = true;
 
                 Iterator<SelectionKey> selectedKeys = selector.selectedKeys()
                         .iterator();
@@ -189,31 +183,34 @@ public class ConnectionManager {
                             n.getFD().updateFDForNode(m.getSenderId());
 
                             //Handling init messages first, in this way I shouldn't have problem with the others messages
-                            if (handleInit(m))
+                            if (!handleInit(m))
                                 parseInput(m, (SocketChannel) key.channel());
 
+                        }
 
-                            if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getMySett().getNodeId() == 26 && flag) {
-                                for(int i = 0;i<10;i++) {
-                                    System.out.println("Op: " +i);
-                                    read();
+
+                        /*
+                        if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getMySett().getNodeId() == 26) {
+                            for(int i = 0;i<10;i++) {
+                                System.out.println("Op: " +i);
+                                read();
+                                write(n.getLocalView());
+                            }
+                        }
+                        */
+
+
+
+                        //COMMUNICATE MUST HAVE ALL NODES UP TO MAKE MULTIPLE WRITES
+                        for (int i = 1;i<4;i++){
+                            if ((n.getFD().getActiveNodes().size() >= n.getMySett().getNumberOfNodes()) && (n.getMySett().getNodeId() == i)) {
+                                while (true) {
+                                    Thread.sleep(10);
                                     write(n.getLocalView());
                                 }
-                                flag = false;
                             }
-
-
-
-
-                            /*for (int i = 1;i<4;i++){
-                                if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getMySett().getNodeId() == i)
-                                    while(true)
-                                        write(n.getLocalView());
-                            }
-                            */
-
-
                         }
+
 
 
                     } else if (key.isConnectable())
@@ -231,6 +228,7 @@ public class ConnectionManager {
 
     private boolean handleInit(Message receivedMessage) throws IOException {
 
+        System.out.println("I'm in handleInit: request->" + receivedMessage.getRequestType() + " from->" +receivedMessage.getSenderId());
         switch (receivedMessage.getRequestType()) {
                     /*New messages to handle new server connection, init_ack is used only to update client FD, init connects the new client and updates communicate obj (chans, serverNumber etc..) */
                 case "init":
@@ -240,7 +238,7 @@ public class ConnectionManager {
                     //updateRep(receivedMessage.getSenderId());
                     handleConnectionRequest("init_ack",receivedMessage.getSenderId());
                     comm = new Communicate(n,this);
-                    return false;
+                    return true;
 
                 case "init_ack":
 
@@ -258,18 +256,8 @@ public class ConnectionManager {
                     //handleConnectionRequest("end_handshake",receivedMessage.getSenderId());
                     return true;
 
-                    /*Need this to send correct view to older node (with init I send the view with only me active
-                case "end_handshake":
-                    System.out.println("Updating replica for:" + receivedMessage.getSenderId() + " with view: " + receivedMessage.getView().getValue());
-                    replica.put(receivedMessage.getSenderId(), receivedMessage);
-
-                    //This must start as soon as we know a quorum is present
-                    //if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
-                    //    startElectionRoutine();
-                    return true;
-                    */
                 default:
-                    return true;
+                    return false;
         }
     }
 
@@ -353,7 +341,7 @@ public class ConnectionManager {
     }
 
     private void parseInput(Message receivedMessage, SocketChannel channel) throws IOException {
-
+        System.out.println("I'm in parseInput: request->" + receivedMessage.getRequestType() + " from->" +receivedMessage.getSenderId());
         Tag maxTag = findMaxTagFromSet(rep);
 
             switch (receivedMessage.getRequestType()) {
@@ -365,8 +353,9 @@ public class ConnectionManager {
 
                 case "pre-write":
                     Tag newTag = receivedMessage.getTag();
-                    //System.out.println("Received tag has: label->" + newTag.getLabel() + " counter->" + newTag.getCounters().getFirst().getCounter() + " written by->" + newTag.getCounters().getFirst().getId());
-                    //System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
+
+                    System.out.println("Received tag has: label->" + newTag.getLabel() + " counter->" + newTag.getCounters().getFirst().getCounter() + " written by->" + newTag.getCounters().getFirst().getId());
+                    System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
 
                     if (maxTag.compareTo(newTag) >= 0) {
                         System.out.println("Received tag smaller than local max tag");
@@ -375,6 +364,7 @@ public class ConnectionManager {
 
                     //only master writes
                     //n.getFD().setLeader_id(receivedMessage.getSenderId());
+
                     n.setLocalTag(newTag);
                     n.setLocalView(receivedMessage.getView());
                     n.getLocalView().setStatus(View.Status.PRE);
@@ -385,18 +375,22 @@ public class ConnectionManager {
                 case "finalize":
                     //saving proper message in replica map, in this way I can retrieve the node view
                     replica.put(receivedMessage.getSenderId(), receivedMessage);
+
+
                     Tag bestTag = receivedMessage.getTag();
-                    //System.out.println("Received tag has: label->" + bestTag.getLabel() + " counter->" + bestTag.getCounters().getFirst().getCounter() + " written by->" + bestTag.getCounters().getFirst().getId());
-                    //System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
+                    System.out.println("Received tag has: label->" + bestTag.getLabel() + " counter->" + bestTag.getCounters().getFirst().getCounter() + " written by->" + bestTag.getCounters().getFirst().getId());
+                    System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
 
                     if (rep.containsKey(bestTag)) {
                         rep.get(bestTag).setStatus(View.Status.FIN);
+                        System.out.println("Finalizing view: " + rep.get(bestTag).getValue() + " with tag: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
                         sendMessage(channel, new Message("fin-ack", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId()));
                     } else {
 
                         View tmp = new View("");
                         tmp.setStatus(View.Status.FIN);
                         rep.put(bestTag, tmp);
+                        System.out.println("Tag not present, putting null view");
                         sendMessage(channel, new Message("fin-ack", bestTag, tmp, n.getMySett().getNodeId()));
                     }
                     n.getLocalView().setStatus(View.Status.FIN);
@@ -410,25 +404,13 @@ public class ConnectionManager {
                         rep.put(latestTag, receivedMessage.getView());
                     replica.put(receivedMessage.getSenderId(), receivedMessage);
                     break;
-                /*
-                case "userReadRequest":
-                    read();
-                    sendMessage(channel, new Message("success", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId()));
-                    break;
 
-                case "userWriteRequest":
-                    write(receivedMessage.getView());
-                    System.out.println("Replying to request with result: success");
-                    sendMessage(channel, new Message("success", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId()));
-                    break;
-                    */
                 //Reading -1
                 default:
                     System.out.println("Server or reader/writer crashed");
                     if (serverChannels.contains(channel))
                         serverChannels.remove(channel);
                     channel.close();
-                    comm = new Communicate(n,this);
             }
 
 
@@ -447,7 +429,7 @@ public class ConnectionManager {
         socketChannel.configureBlocking(false);
         socketChannel.register(selector, SelectionKey.OP_READ);
 
-        System.out.println("Client listening on local port: " + socketChannel.getLocalAddress());
+        System.out.println("Client connection detected");
     }
 
     // if a read request arises from selector
@@ -495,9 +477,9 @@ public class ConnectionManager {
         n.setLocalView(newView);
         rep.put(newTag, newView);
         if (comm.finalizeWrite())
-            System.out.println("WE DID IT REDDIT");
+            System.out.println("Write complete correctly");
         else
-            System.out.println("WE LOST");
+            System.out.println("Write error");
 
         long tEnd = System.currentTimeMillis();
         long tDelta = tEnd - tStart;
@@ -544,13 +526,16 @@ public class ConnectionManager {
         if (socketChannel.isConnected()) {
             serverChannels.add(socketChannel);
 
+
+
             //update view as soon as I see an active connection
-            for(Integer id : otherNodesAddress.keySet()){
+            for(Integer id : otherNodesAddress.keySet()) {
 
                 if (otherNodesAddress.get(id).equals(socketChannel.getRemoteAddress())) {
                     n.getFD().updateFDForNode(id);
-                    System.out.println("Detected connection from:" + id + " new view:" + n.getLocalView());
+                    System.out.println("Detected connection from:" + id + " new view:" + n.getLocalView().getValue());
                 }
+
             }
         }
 
@@ -563,6 +548,7 @@ public class ConnectionManager {
 
         } catch (IOException e) {
             // Cancel the channel's registration with our selector
+            socketChannel.close();
             key.cancel();
             return;
         }
@@ -593,17 +579,6 @@ public class ConnectionManager {
 
 
     //Utilities
-
-    /*private InetSocketAddress getAddressFromString(String line) {
-
-        line = line.replace("/", "");
-        line = line.replace(":", " ");
-        String[] splitted = line.split(" ");
-        return new InetSocketAddress(splitted[0],
-                Integer.parseInt(splitted[1]));
-    }
-    */
-
 
     /* finds the hidhest tag in rep map */
     private Tag findMaxTagFromSet(Map<Tag, View> map) {
@@ -644,9 +619,10 @@ public class ConnectionManager {
         return lastTag;
     }
 
-
     /* writes message into buffer */
     private void sendMessage(SocketChannel s, Message m) throws IOException {
+
+        System.out.println("Trying to send: " + m.getRequestType() + " to " + s.getRemoteAddress().toString());
 
         if (s.isConnected()){
 
@@ -656,14 +632,13 @@ public class ConnectionManager {
             writeBuffer.flip();
 
             while (writeBuffer.hasRemaining())
-                s.write(writeBuffer); // writing messsage to server
+                s.write(writeBuffer); // writing message to server
             writeBuffer.clear();
         }
         else {
-            System.out.println("Channel not connected, can't send message: " +m.getRequestType());
+            System.out.println("Channel not connected, can't send message: " + m.getRequestType());
 
         }
-
 
     }
 
@@ -687,7 +662,6 @@ public class ConnectionManager {
             key.cancel();
             serverChannels.remove(key.channel());
             key.channel().close();
-            comm = new Communicate(n,this);
         }
 
         return message.split("&");

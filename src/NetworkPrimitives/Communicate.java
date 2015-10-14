@@ -125,16 +125,6 @@ public class Communicate {
 	}
 	private Message[] waitForQuorum(Message request) {
 
-
-		//-1 one because for example on 10 nodes the minimum is 5 because I'm the sixth
-		if (activeServers < n.getMySett().getQuorum()-1){
-
-
-			System.out.println("Quorum not present for communicate: " + activeServers + " should be: "+ n.getMySett().getQuorum());
-			return null;
-
-		}
-
 		Message reply;
 
 		Message[] values = new Message[activeServers];
@@ -155,21 +145,61 @@ public class Communicate {
 		//writing message on EVERY open channel
 		for (int i = 0; i < activeServers; i++) {
 
-				try {
-					System.out.println("Sending '"
-							+ request.getRequestType()
-							+ "' query to server");
+			try {
+				System.out.println("Sending '"
+						+ request.getRequestType()
+						+ "' query to server");
 
-					writeBuffer.flip();
-					while (writeBuffer.hasRemaining()) {
-						if (chan.get(i).isConnectionPending() || !chan.get(i).isConnected())
-							chan.get(i).finishConnect();
-						chan.get(i).write(writeBuffer);
+				writeBuffer.flip();
+				while (writeBuffer.hasRemaining()) {
+					if (chan.get(i).isConnectionPending() || !chan.get(i).isConnected())
+						chan.get(i).finishConnect();
+					chan.get(i).write(writeBuffer);
+				}
+
+			} catch (IOException e) {
+
+				//if write fails it means that the channel has been closed so we cannot write to it;
+				removeCrashedServer(i, chan);
+				status.remove(i);
+				i--;
+				activeServers = caller.getServerChannels().size();
+				System.out.println("Channel doesn't exist anymore. Active channels left:"+ activeServers);
+				continue;
+			}
+
+			//this means that we sent the message to i and we are waiting for an ack from it
+			turns.set(i,false);
+			status.set(i, Status.NOTACK);
+
+		}
+
+
+		// Start receiving acks until quorum is reached.
+		// In case of ack from a previous query, ignore the message and send the new query
+		while (ackCounter < activeServers / 2 + 1) {
+
+			for (int i = 0; i < activeServers; i++) {
+				readBuffer.clear();
+				String message = "";
+				try {
+
+					while (chan.get(i).read(readBuffer) > 0) {
+						// flip the buffer to start reading
+						readBuffer.flip();
+						message += Charset.defaultCharset().decode(
+								readBuffer);
 					}
 
+					if (message.equals(""))
+						continue;
+					//handling multiple messages on buffer
+					String[] tokens = message.split("&");
+					//decoding earlier message
+					reply = ED.decode(tokens[0]);
 				} catch (IOException e) {
 
-					//if write fails it means that the channel has been closed so we cannot write to it;
+					//if write fails it means that the channel has been closed so we cannot write to it
 					removeCrashedServer(i, chan);
 					status.remove(i);
 					i--;
@@ -178,35 +208,22 @@ public class Communicate {
 					continue;
 				}
 
-				//this means that we sent the message to i and we are waiting for an ack from it
-				turns.set(i,false);
-				status.set(i, Status.NOTACK);
-
-		}
+				//updating FD
+				n.getFD().updateFDForNode(reply.getSenderId());
 
 
-			// Start receiving acks until quorum is reached.
-			// In case of ack from a previous query, ignore the message and send the new query
-			while (ackCounter < n.getMySett().getQuorum()-1) {
+				//handling older messages
+				if (status.get(i) == Status.NOTSENT) {
 
-				for (int i = 0; i < activeServers; i++) {
-					readBuffer.clear();
-					String message = "";
 					try {
-
-						while (chan.get(i).read(readBuffer) > 0) {
-							// flip the buffer to start reading
-							readBuffer.flip();
-							message += Charset.defaultCharset().decode(
-									readBuffer);
+						System.out.println("Sending '"
+								+ request.getRequestType()
+								+ "' query to server (late) #" + reply.getSenderId());
+						writeBuffer.flip();
+						while (writeBuffer.hasRemaining()) {
+							chan.get(i).write(writeBuffer);
 						}
 
-						if (message.equals(""))
-							continue;
-						//handling multiple messages on buffer
-						String[] tokens = message.split("&");
-						//decoding earlier message
-						reply = ED.decode(tokens[0]);
 					} catch (IOException e) {
 
 						//if write fails it means that the channel has been closed so we cannot write to it
@@ -217,46 +234,19 @@ public class Communicate {
 						System.out.println("Channel doesn't exist anymore. Active channels left:"+ activeServers);
 						continue;
 					}
+					turns.set(i,false);
+					status.set(i, Status.NOTACK);
+				}
+				//if it was not an older message we can store it consider the ack and wait for another write
+				else {
 
-					//updating FD
-					n.getFD().updateFDForNode(reply.getSenderId());
-
-
-					//handling older messages
-					if (status.get(i) == Status.NOTSENT) {
-
-						try {
-							System.out.println("Sending '"
-									+ request.getRequestType()
-									+ "' query to server (late) #" + reply.getSenderId());
-							writeBuffer.flip();
-							while (writeBuffer.hasRemaining()) {
-								chan.get(i).write(writeBuffer);
-							}
-
-						} catch (IOException e) {
-
-							//if write fails it means that the channel has been closed so we cannot write to it
-							removeCrashedServer(i, chan);
-							status.remove(i);
-							i--;
-							activeServers = caller.getServerChannels().size();
-							System.out.println("Channel doesn't exist anymore. Active channels left:"+ activeServers);
-							continue;
-						}
-						turns.set(i,false);
-						status.set(i, Status.NOTACK);
-					}
-					//if it was not an older message we can store it consider the ack and wait for another write
-					else {
-
-						values[i] = new Message(reply.getRequestType(),reply.getTag(),reply.getView(),reply.getSenderId());
-						status.set(i, Status.ACK);
-						turns.set(i,true);
-						ackCounter++;
-					}
+					values[i] = new Message(reply.getRequestType(),reply.getTag(),reply.getView(),reply.getSenderId());
+					status.set(i, Status.ACK);
+					turns.set(i,true);
+					ackCounter++;
 				}
 			}
+		}
 
 		//setTurns(turns);
 		return values;

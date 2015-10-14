@@ -29,7 +29,7 @@ public class View {
 	//We need this to update the local node view every time a node comes online/offline
 	public View (Set s){
 
-		idArray = new ArrayList<Integer>(s.size());
+		idArray = new ArrayList<>();
 		StringBuilder sb = new StringBuilder();
 
 
@@ -52,7 +52,7 @@ public class View {
 	public void setArrayFromValueString(){
 
 		String[] tokens = value.split(ID_SEPARATOR);
-		idArray = new ArrayList<Integer>();
+		idArray = new ArrayList<>();
 
 		for (int i = 0;i <tokens.length; i++)
 			if (!idArray.contains(Integer.parseInt(tokens[i])))

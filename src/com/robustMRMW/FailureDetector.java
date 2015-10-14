@@ -13,10 +13,11 @@ import java.util.Set;
 public class FailureDetector {
 
 
-    private static final int MAXIMUM_HEARTBEAT_VALUE = 20;
+    private static final int MAXIMUM_HEARTBEAT_VALUE_MULT = 100;
     private HashMap<Integer,Integer> activeNodes;
-    Node current;
-    int leader_id;
+    private Node current;
+    private int leader_id;
+    private long heartbeat;
 
 
 
@@ -27,6 +28,7 @@ public class FailureDetector {
         activeNodes.put(n.getMySett().getNodeId(), 0);
         current = n;
         leader_id = -1;
+        heartbeat = MAXIMUM_HEARTBEAT_VALUE_MULT * ids.size();
 
         updateNodeLocalView();
 
@@ -36,6 +38,7 @@ public class FailureDetector {
     public void updateFDForNode(int n) {
         boolean flag = false;
 
+
         //Signaling a modification to activeNode as occurred (because n is not in the activeNode list)
         if (!activeNodes.containsKey(n)) {
             flag = true;
@@ -43,6 +46,9 @@ public class FailureDetector {
 
         //resetting node counter (replaces old value), if the node was removed for inactivity it will be added again
         activeNodes.put(n, 0);
+
+
+
 
 
         Iterator<Integer> it = activeNodes.keySet().iterator();
@@ -54,7 +60,7 @@ public class FailureDetector {
             //checking with heartbeat, if it gets too big I remove the node (counting it as inactive)
             int newVal = activeNodes.get(i)+1;
 
-            if (newVal < MAXIMUM_HEARTBEAT_VALUE)
+            if (newVal < heartbeat)
                 activeNodes.put(i, newVal);
             else {
                 it.remove();
@@ -91,11 +97,12 @@ public class FailureDetector {
     private void updateNodeLocalView(){
 
         //this gets all active nodes ids, builds a new view FIN and sends the information to the node
-        System.out.println("Old view: " + current.getLocalView().getValue());
+        System.out.println("Current node view (in FD): " + current.getLocalView().getValue());
+        System.out.println("Current FD value: " + activeNodes.keySet().toString());
         Set<Integer> set = activeNodes.keySet();
         View updView = new View (set);
         current.setLocalView(updView);
-        System.out.println("New view: " + current.getLocalView().getValue());
+        System.out.println("New updated view: " + updView.getValue().toString());
 
     }
 
