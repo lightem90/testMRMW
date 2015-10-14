@@ -13,10 +13,11 @@ import java.util.Set;
 public class FailureDetector {
 
 
-    private static final int MAXIMUM_HEARTBEAT_VALUE = 20;
+    private static final int MAXIMUM_HEARTBEAT_VALUE_MULT = 100;
     private HashMap<Integer,Integer> activeNodes;
     Node current;
     int leader_id;
+    long heartbeat;
 
 
 
@@ -27,6 +28,8 @@ public class FailureDetector {
         activeNodes.put(n.getMySett().getNodeId(), 0);
         current = n;
         leader_id = -1;
+        //Heartbeat value becomes a function of the total number of nodes
+        heartbeat = MAXIMUM_HEARTBEAT_VALUE_MULT * ids.size();
 
         updateNodeLocalView();
 
@@ -54,7 +57,7 @@ public class FailureDetector {
             //checking with heartbeat, if it gets too big I remove the node (counting it as inactive)
             int newVal = activeNodes.get(i)+1;
 
-            if (newVal < MAXIMUM_HEARTBEAT_VALUE)
+            if (newVal < heartbeat)
                 activeNodes.put(i, newVal);
             else {
                 it.remove();
@@ -91,11 +94,12 @@ public class FailureDetector {
     private void updateNodeLocalView(){
 
         //this gets all active nodes ids, builds a new view FIN and sends the information to the node
-        System.out.println("Old view: " + current.getLocalView().getValue());
+        System.out.println("Updating view after message received");
         Set<Integer> set = activeNodes.keySet();
+        System.out.println("View if FD: " + set.toString());
         View updView = new View (set);
+        System.out.println("New local view: " + updView.getValue());
         current.setLocalView(updView);
-        System.out.println("New view: " + current.getLocalView().getValue());
 
     }
 
