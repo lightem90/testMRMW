@@ -234,7 +234,7 @@ public class ConnectionManager {
                     }
 
                     //n.getFD().setLeader_id(receivedMessage.getTag().getId());
-                    replica.put(receivedMessage.getSenderId(),receivedMessage);
+                    replica.put(receivedMessage.getSenderId(), receivedMessage);
                     //System.out.println("Sending my view: " + n.getLocalView().getValue());
                     //handleConnectionRequest("end_handshake",receivedMessage.getSenderId());
                     return false;
@@ -556,8 +556,11 @@ public class ConnectionManager {
     /* finds the highest tag in rep map */
     private Tag findMaxTagFromSet(Map<Tag, View> map) {
 
-        //the minimum tag that we have is the localTag (initialized to id,0,0 at the beginning)
-        Tag maxTag = n.getLocalTag();
+        //the minimum tag that we have is the localTag (if it is a valid view, otherwise it is the smallest possible tag)
+        Tag maxTag;
+        if (n.getLocalView().getStatus() == View.Status.FIN)
+            maxTag = n.getLocalTag();
+        else maxTag = new Tag(0,0,0);
 
         Set<Tag> tags = map.keySet();
         for (Tag tag : tags) {
