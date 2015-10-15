@@ -83,7 +83,13 @@ public class Communicate {
 
 		Message request = new Message("pre-write", newTag, newView, n.getMySett().getNodeId());
 		lastTag = newTag;
-		return !(waitForQuorum(request) == null);
+
+		Message[] values = waitForQuorum(request);
+
+		if (isValidResponse(values, new Tag(-1, -1, -1)))
+			return true;
+		else
+			return false;
 	}
 
 	/*
@@ -258,6 +264,28 @@ public class Communicate {
 		}
 
 		return maxTag;
+	}
+
+	private boolean isValidResponse(Message[] values, Tag invalidTag){
+
+		int counter = 0;
+		for (Message msg : values) {
+			if (msg != null) {
+				if (msg.getTag().compareTo(invalidTag) == 0) {
+					counter++;
+				}
+			}
+		}
+
+		//if I received (how it should be) a quorum of answer (not counting me) the procedure is fine
+		if ((values.length - counter) >= n.getMySett().getQuorum()-1)
+			return true;
+		else {
+			System.out.println("Invalid pre-write, received" + counter + " invalid response(s)");
+			return false;
+		}
+
+
 	}
 
 	public void removeCrashedServer(int i, ArrayList<SocketChannel> serverChannels) {
