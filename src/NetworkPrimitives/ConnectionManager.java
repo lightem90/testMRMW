@@ -359,17 +359,20 @@ public class ConnectionManager {
 
                     if (maxTag.compareTo(newTag) >= 0) {
                         System.out.println("Received tag smaller than local max tag");
+                        sendMessage(channel, new Message("pre-write-ack", new Tag(-1,-1,-1), new View (""), n.getMySett().getNodeId()));
                         break;
                     }
+                    else {
 
-                    //only master writes
-                    //n.getFD().setLeader_id(receivedMessage.getSenderId());
+                        //only master writes
+                        //n.getFD().setLeader_id(receivedMessage.getSenderId());
 
-                    n.setLocalTag(newTag);
-                    n.setLocalView(receivedMessage.getView());
-                    n.getLocalView().setStatus(View.Status.PRE);
-                    rep.put(n.getLocalTag(), n.getLocalView());
-                    sendMessage(channel, new Message("pre-write-ack", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId()));
+                        n.setLocalTag(newTag);
+                        n.setLocalView(receivedMessage.getView());
+                        n.getLocalView().setStatus(View.Status.PRE);
+                        rep.put(n.getLocalTag(), n.getLocalView());
+                        sendMessage(channel, new Message("pre-write-ack", n.getLocalTag(), n.getLocalView(), n.getMySett().getNodeId()));
+                    }
                     break;
 
                 case "finalize":
@@ -469,23 +472,31 @@ public class ConnectionManager {
         Tag maxTag;
         if ((maxTag = comm.query()) == null)
             return;
+
         System.out.println("Received tag after query has: label->" + maxTag.getLabel() + " counter->" + maxTag.getCounters().getFirst().getCounter() + " written by->" + maxTag.getCounters().getFirst().getId());
         Tag newTag = generateNewTag(maxTag);
         System.out.println("Writing new tag: label->" + newTag.getLabel() + " counter->" + newTag.getCounters().getFirst().getCounter() + " written by->" + newTag.getCounters().getFirst().getId());
-        comm.preWrite(newTag, newView);
-        n.setLocalTag(newTag);
-        n.setLocalView(newView);
-        rep.put(newTag, newView);
-        if (comm.finalizeWrite())
-            System.out.println("Write complete correctly");
-        else
-            System.out.println("Write error");
 
-        long tEnd = System.currentTimeMillis();
-        long tDelta = tEnd - tStart;
-        double elapsedSeconds = tDelta / 1000.0;
+        if (comm.preWrite(newTag, newView)) {
+            n.setLocalTag(newTag);
+            n.setLocalView(newView);
+            rep.put(newTag, newView);
+            if (comm.finalizeWrite())
+                System.out.println("Write complete correctly");
+            else
+                System.out.println("Write error");
 
-        System.out.println("Elapsed time for write: " + elapsedSeconds);
+            long tEnd = System.currentTimeMillis();
+            long tDelta = tEnd - tStart;
+            double elapsedSeconds = tDelta / 1000.0;
+
+            System.out.println("Elapsed time for write: " + elapsedSeconds);
+        }
+        else {
+            System.out.println("Can't complete pre-write - aborting");
+            return;
+        }
+
 
     }
 
