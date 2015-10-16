@@ -406,7 +406,7 @@ public class ConnectionManager {
                     */
                 //Reading -1
                 default:
-                    System.out.println("Server or reader/writer crashed" +receivedMessage.getRequestType());
+                    System.out.println("Server or reader/writer crashed" );
                     if (serverChannels.contains(channel))
                         serverChannels.remove(channel);
                     channel.close();
