@@ -69,7 +69,8 @@ public class electMasterService {
 
                 System.out.println("Contained with view: " + nodeView.getValue());
 
-                //isContained checks if l has a quorum for his view and if he is contained in each view of the nodes of his view (can't check proposed view and FD since we don't have replicas)
+                //isContained checks if l has a quorum for his view and if he is contained in each view of the nodes of his view
+                //todo: check if iscontained does is job here or if i need replicas
                 if ((nodeView.getIdArray().size() >= mSet.getQuorum()) && isContained(nodeView, l))
                     seemCrd.add(l);
             }

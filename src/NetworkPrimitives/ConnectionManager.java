@@ -163,6 +163,7 @@ public class ConnectionManager {
                     SelectionKey key = selectedKeys.next();
                     selectedKeys.remove();
 
+
                     if (!key.isValid()) {
                         // if a channel is closed we skip it
                         continue;
@@ -172,10 +173,6 @@ public class ConnectionManager {
                     if (key.isAcceptable()) {
                         accept(key);
                     } else if (key.isReadable()) {
-
-                        //This must start as soon as we know a quorum is present
-                        if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
-                            startElectionRoutine();
 
                         String[] tokens = readMessages(key);
                         System.out.println("Received " + tokens.length + " message/s");
@@ -191,8 +188,15 @@ public class ConnectionManager {
                             n.getFD().updateFDForNode(m.getSenderId());
 
                             //Handling init messages first, in this way I shouldn't have problem with the others messages
-                            if (handleInit(m))
+                            if (handleInit(m)){
+                                    //This must start as soon as we know a quorum is present
+                                    if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
+                                        startElectionRoutine();
+                            }
+                            else {
                                 parseInput(m, (SocketChannel) key.channel());
+                            }
+
                         }
 
 
@@ -215,9 +219,9 @@ public class ConnectionManager {
                     /*New messages to handle new server connection, init_ack is used only to update client FD, init connects the new client and updates communicate obj (chans, serverNumber etc..) */
                 case "init":
                     //update serverChannels and serverCount
-                    replica.put(receivedMessage.getSenderId(),receivedMessage);
+                    replica.put(receivedMessage.getSenderId(), receivedMessage);
 
-                     //Commented now, shouldn't be needed anymore (check finishConnect)
+                    //Commented now, shouldn't be needed anymore (check finishConnect)
                     //updateRep(receivedMessage.getSenderId());
                     handleConnectionRequest("init_ack",receivedMessage.getSenderId());
                     comm = new Communicate(n,this);
@@ -237,7 +241,7 @@ public class ConnectionManager {
                     replica.put(receivedMessage.getSenderId(), receivedMessage);
                     //System.out.println("Sending my view: " + n.getLocalView().getValue());
                     //handleConnectionRequest("end_handshake",receivedMessage.getSenderId());
-                    return false;
+                    return true;
 
                     /*Need this to send correct view to older node (with init I send the view with only me active
                 case "end_handshake":
@@ -337,7 +341,7 @@ public class ConnectionManager {
 
                 case "query":
                     sendMessage(channel, new Message("query-ack", maxTag, rep.get(maxTag), n.getMySett().getNodeId()));
-                    replica.put(receivedMessage.getSenderId(),receivedMessage);
+                    replica.put(receivedMessage.getSenderId(), receivedMessage);
                     break;
 
                 case "pre-write":
