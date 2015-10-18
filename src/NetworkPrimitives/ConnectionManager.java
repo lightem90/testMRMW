@@ -244,7 +244,7 @@ public class ConnectionManager {
                     replica.put(receivedMessage.getSenderId(), receivedMessage);
                     //System.out.println("Sending my view: " + n.getLocalView().getValue());
                     //handleConnectionRequest("end_handshake",receivedMessage.getSenderId());
-                    return false;
+                    return true;
 
                     /*Need this to send correct view to older node (with init I send the view with only me active
                 case "end_handshake":
