@@ -96,7 +96,7 @@ public class ConnectionManager {
                     //hostAddress = new InetSocketAddress(tokens[1],PORT); //emulab
                     hostAddress = new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
                 else
-                    //otherNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(tokens[1],PORT)); //emulav
+                    //otherNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(tokens[1],PORT)); //emulab
                     otherNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1]))); //local
             }
             serverCount = ids.size();
@@ -173,9 +173,7 @@ public class ConnectionManager {
                         accept(key);
                     } else if (key.isReadable()) {
 
-                        //This must start as soon as we know a quorum is present
-                        if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
-                            startElectionRoutine();
+
 
                         String[] tokens = readMessages(key);
                         System.out.println("Received " + tokens.length + " message/s");
@@ -185,14 +183,23 @@ public class ConnectionManager {
 
                             Message m = ED.decode(msg);
                             System.out.println("Received " + m.getRequestType() + " from node #" + m.getSenderId());
-                            //ignoring invalid messages
-                            if (m.getRequestType().equals(-1) && m.getSenderId() == -1)
+                            //ignoring invalid messages (sender -1 is invalid)
+                            if (m.getSenderId() == -1)
                                 continue;
                             n.getFD().updateFDForNode(m.getSenderId());
 
                             //Handling init messages first, in this way I shouldn't have problem with the others messages
                             if (handleInit(m))
                                 parseInput(m, (SocketChannel) key.channel());
+
+                            /* Used for testing
+                            if (n.getMySett().getNodeId() == 5000)
+                                write(n.getLocalView());
+                                */
+
+                            //This must start as soon as we know a quorum is present
+                            //if (n.getFD().getActiveNodes().size() >= n.getMySett().getQuorum() && n.getFD().getLeader_id() == -1)
+                            //    startElectionRoutine();
                         }
 
 
@@ -365,8 +372,8 @@ public class ConnectionManager {
                     break;
 
                 case "finalize":
-                    //saving proper message in replica map, in this way I can retrieve the node view
-                    replica.put(receivedMessage.getSenderId(), receivedMessage);
+                    //saving proper message in replica map, in this way I can retrieve the node view NO! invalid view (yet)
+                    //replica.put(receivedMessage.getSenderId(), receivedMessage);
                     Tag bestTag = receivedMessage.getTag();
                     //System.out.println("Received tag has: label->" + bestTag.getLabel() + " counter->" + bestTag.getCounters().getFirst().getCounter() + " written by->" + bestTag.getCounters().getFirst().getId());
                     //System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
@@ -406,7 +413,7 @@ public class ConnectionManager {
                     */
                 //Reading -1
                 default:
-                    System.out.println("Server or reader/writer crashed" +receivedMessage.getRequestType());
+                    System.out.println("Server or reader/writer crashed " +receivedMessage.getRequestType());
                     if (serverChannels.contains(channel))
                         serverChannels.remove(channel);
                     channel.close();

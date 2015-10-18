@@ -11,6 +11,10 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class Communicate {
 
@@ -65,28 +69,52 @@ public class Communicate {
 
 		Message request = new Message("query", n.getLocalTag(),
 				n.getLocalView(), n.getMySett().getNodeId());
+		Message[] values = null;
 
-		Message[] values = waitForQuorum(request);
 
-		//last tag CAN'T be smaller than local tag
-		lastTag = findMaxTagFromMessages(values,n.getLocalTag());
-		if (lastTag.compareTo(n.getLocalTag()) >= 0) //TODO: this check is useless, this condition is met in findMaxTagFromMessages
+        //Initializing collector for waiting all answers with this obj communicate and the data to use
+		Collector c = new Collector(request,values,this);
+
+
+		ExecutorService executorService = Executors.newSingleThreadExecutor();
+        //executing "run" method in collector
+		executorService.execute(c);
+		executorService.shutdown();
+
+
+        //waiting for termination
+		while (!executorService.isTerminated()){}
+
+
+		//last tag CAN'T be smaller than local tag, using the return value of collector (should be the same but in any case..)
+		lastTag=findMaxTagFromMessages(c.getReturnValues(), n.getLocalTag());
+
+		if(lastTag.compareTo(n.getLocalTag())>=0) //TODO: this check is useless, this condition is met in findMaxTagFromMessages
 			return lastTag;
 		return null;
-	}
+		}
 
 	/*
 	 * preWrite() starts and completes a "pre-write" request to every other
 	 * server returning true in case of success or false in case of failure
 	 */
+
 	public boolean preWrite(Tag newTag, View newView) {
 
 		Message request = new Message("pre-write", newTag, newView, n.getMySett().getNodeId());
 		lastTag = newTag;
 
-		Message[] values = waitForQuorum(request);
+		Message[] values = null;
 
-		if (isValidResponse(values, new Tag(-1, -1, -1)))
+		Collector c = new Collector(request,values,this);
+
+		ExecutorService executorService = Executors.newSingleThreadExecutor();
+		executorService.execute(c);
+		executorService.shutdown();
+
+		while (!executorService.isTerminated()){}
+
+		if (isValidResponse(c.getReturnValues(), new Tag(-1, -1, -1)))
 			return true;
 		else
 			return false;
@@ -101,11 +129,21 @@ public class Communicate {
 		Message request = new Message("finalize", lastTag, n.getLocalView(),
 				n.getMySett().getNodeId());
 
-		Message[] values = waitForQuorum(request);
+		Message[] values = null;
+
+		Collector c = new Collector(request,values,this);
+
+		ExecutorService executorService = Executors.newSingleThreadExecutor();
+		executorService.execute(c);
+		executorService.shutdown();
+
+		while (!executorService.isTerminated()){}
+
+
 		int i = 0;
-		while (values[i] == null)
+		while (c.getReturnValues()[i] == null)
 			i++;
-		return values[i].getView();
+		return c.getReturnValues()[i].getView();
 	}
 
 	/*
@@ -117,11 +155,31 @@ public class Communicate {
 		Message request = new Message("finalize", lastTag, n.getLocalView(),
 				n.getMySett().getNodeId());
 
-		return !(waitForQuorum(request) == null);
+		Message[] values = null;
+
+
+		Collector c = new Collector(request,values,this);
+
+		ExecutorService executorService = Executors.newSingleThreadExecutor();
+		executorService.execute(c);
+		executorService.shutdown();
+
+		while (!executorService.isTerminated()){}
+
+
+
+		return !(c.getReturnValues() == null);
 	}
-	private Message[] waitForQuorum(Message request) {
+	public Message[] waitForQuorum(Message request) {
 
 		Message reply;
+        try {
+            for (SocketChannel c : chan) {
+
+                System.out.println("Chan: local->" + c.getLocalAddress().toString() + " remote-> " + c.getRemoteAddress().toString());
+
+            }
+        }catch (IOException e){}
 
 		Message[] values = new Message[activeServers];
 		ArrayList<Status> status = new ArrayList<>(activeServers);
@@ -142,9 +200,7 @@ public class Communicate {
 		for (int i = 0; i < activeServers; i++) {
 
 				try {
-					System.out.println("Sending '"
-							+ request.getRequestType()
-							+ "' query to server");
+					System.out.println("Sending '"+request.getRequestType()+ "' query to server");
 
 					writeBuffer.flip();
 					while (writeBuffer.hasRemaining()) {
@@ -171,9 +227,9 @@ public class Communicate {
 		}
 
 
-			// Start receiving acks until quorum is reached.
+			// Start receiving acks until quorum is reached, not activeServers/2 +1 but the quorum we save at beginning -1 (us)
 			// In case of ack from a previous query, ignore the message and send the new query
-			while (ackCounter < activeServers / 2 + 1) {
+			while (ackCounter < n.getMySett().getQuorum()-1) {
 
 				for (int i = 0; i < activeServers; i++) {
 					readBuffer.clear();
@@ -212,9 +268,7 @@ public class Communicate {
 					if (status.get(i) == Status.NOTSENT) {
 
 						try {
-							System.out.println("Sending '"
-									+ request.getRequestType()
-									+ "' query to server (late) #" + reply.getSenderId());
+							System.out.println("Sending '"+ request.getRequestType()+ "' query to server (late) #" + reply.getSenderId());
 							writeBuffer.flip();
 							while (writeBuffer.hasRemaining()) {
 								chan.get(i).write(writeBuffer);
@@ -253,7 +307,7 @@ public class Communicate {
 
 	//utilities
 
-	public static Tag findMaxTagFromMessages(Message[] values, Tag maxTag) {
+	private static Tag findMaxTagFromMessages(Message[] values, Tag maxTag) {
 
 		for (Message msg : values) {
 			if (msg != null) {
@@ -288,7 +342,7 @@ public class Communicate {
 
 	}
 
-	public void removeCrashedServer(int i, ArrayList<SocketChannel> serverChannels) {
+	private void removeCrashedServer(int i, ArrayList<SocketChannel> serverChannels) {
 		try {
 			serverChannels.get(i).close();
 			serverChannels.remove(i);
