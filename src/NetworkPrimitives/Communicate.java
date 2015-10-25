@@ -11,10 +11,8 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 
 public class Communicate {
 
@@ -25,7 +23,6 @@ public class Communicate {
 
 
 	//Class variables
-	private int activeServers;
 	private ArrayList<Boolean> turns;
 	private ArrayList<SocketChannel> chan;
 
@@ -40,15 +37,14 @@ public class Communicate {
 	}
 
 	//initialization
-	public Communicate(Node currNode, ConnectionManager cm) {
+	public Communicate(Node currNode) {
 
-		chan = cm.getServerChannels();
-		activeServers = chan.size();
+		chan = n.getCm().getServerChannels();
 
 
 		//initializing all position to true, meaning we have to send to everyone
-		turns = new ArrayList<>(activeServers);
-		for (int i = 0; i < activeServers; i++) {
+		turns = new ArrayList<>(chan.size());
+		for (int i = 0; i < chan.size(); i++) {
 
 			turns.add(true);
 
@@ -56,7 +52,7 @@ public class Communicate {
 
 		n = currNode;
 		ED = new EncDec();
-		caller = cm;
+		caller = n.getCm();
 
 
 	}
@@ -68,7 +64,7 @@ public class Communicate {
 	public Tag query() {
 
 		Message request = new Message("query", n.getLocalTag(),
-				n.getLocalView(), n.getMySett().getNodeId());
+				n.getLocalView(), n.getSettings().getNodeId());
 		Message[] values = null;
 
 
@@ -101,7 +97,7 @@ public class Communicate {
 
 	public boolean preWrite(Tag newTag, View newView) {
 
-		Message request = new Message("pre-write", newTag, newView, n.getMySett().getNodeId());
+		Message request = new Message("pre-write", newTag, newView, n.getSettings().getNodeId());
 		lastTag = newTag;
 
 		Message[] values = null;
@@ -127,7 +123,7 @@ public class Communicate {
 	public View finalizeRead() {
 
 		Message request = new Message("finalize", lastTag, n.getLocalView(),
-				n.getMySett().getNodeId());
+				n.getSettings().getNodeId());
 
 		Message[] values = null;
 
@@ -153,7 +149,7 @@ public class Communicate {
 	public boolean finalizeWrite() {
 
 		Message request = new Message("finalize", lastTag, n.getLocalView(),
-				n.getMySett().getNodeId());
+				n.getSettings().getNodeId());
 
 		Message[] values = null;
 
@@ -173,20 +169,21 @@ public class Communicate {
 	public Message[] waitForQuorum(Message request) {
 
 		Message reply;
-        try {
+        /*try {
             for (SocketChannel c : chan) {
 
                 System.out.println("Chan: local->" + c.getLocalAddress().toString() + " remote-> " + c.getRemoteAddress().toString());
 
             }
         }catch (IOException e){}
+        */
 
-		Message[] values = new Message[activeServers];
-		ArrayList<Status> status = new ArrayList<>(activeServers);
+		Message[] values = new Message[chan.size()];
+		ArrayList<Status> status = new ArrayList<>(chan.size());
 
 		// initialize status and service variables, we have to send to everyone
 		int ackCounter = 0;
-		for (int i = 0; i < activeServers; i++) {
+		for (int i = 0; i < chan.size(); i++) {
 			values[i] = null;
 			status.add(Status.NOTSENT);
 		}
@@ -197,7 +194,7 @@ public class Communicate {
 		writeBuffer.put(toSend.getBytes());
 
 		//writing message on EVERY open channel
-		for (int i = 0; i < activeServers; i++) {
+		for (int i = 0; i < chan.size(); i++) {
 
 				try {
 					System.out.println("Sending '"+request.getRequestType()+ "' query to server");
@@ -215,8 +212,7 @@ public class Communicate {
 					removeCrashedServer(i, chan);
 					status.remove(i);
 					i--;
-					activeServers = caller.getServerChannels().size();
-					System.out.println("Channel doesn't exist anymore. Active channels left:"+ activeServers);
+					System.out.println("Channel doesn't exist anymore. Active channels left:"+ chan.size());
 					continue;
 				}
 
@@ -229,9 +225,9 @@ public class Communicate {
 
 			// Start receiving acks until quorum is reached, not activeServers/2 +1 but the quorum we save at beginning -1 (us)
 			// In case of ack from a previous query, ignore the message and send the new query
-			while (ackCounter < n.getMySett().getQuorum()-1) {
+			while (ackCounter < n.getSettings().getQuorum()-1) {
 
-				for (int i = 0; i < activeServers; i++) {
+				for (int i = 0; i < chan.size(); i++) {
 					readBuffer.clear();
 					String message = "";
 					try {
@@ -255,8 +251,7 @@ public class Communicate {
 						removeCrashedServer(i, chan);
 						status.remove(i);
 						i--;
-						activeServers = caller.getServerChannels().size();
-						System.out.println("Channel doesn't exist anymore. Active channels left:"+ activeServers);
+						System.out.println("Channel doesn't exist anymore. Active channels left:"+ chan.size());
 						continue;
 					}
 
@@ -280,8 +275,7 @@ public class Communicate {
 							removeCrashedServer(i, chan);
 							status.remove(i);
 							i--;
-							activeServers = caller.getServerChannels().size();
-							System.out.println("Channel doesn't exist anymore. Active channels left:"+ activeServers);
+							System.out.println("Channel doesn't exist anymore. Active channels left:"+ chan.size());
 							continue;
 						}
 						turns.set(i,false);
@@ -298,7 +292,13 @@ public class Communicate {
 				}
 			}
 
-		//setTurns(turns);
+
+
+
+
+
+
+
 		return values;
 
 	}
@@ -332,7 +332,7 @@ public class Communicate {
 		}
 
 		//if I received (how it should be) a quorum of answer (not counting me) the procedure is fine
-		if ((values.length - counter) >= n.getMySett().getQuorum()-1)
+		if ((values.length - counter) >= n.getSettings().getQuorum()-1)
 			return true;
 		else {
 			System.out.println("Invalid pre-write, received" + counter + " invalid response(s)");
@@ -344,9 +344,16 @@ public class Communicate {
 
 	private void removeCrashedServer(int i, ArrayList<SocketChannel> serverChannels) {
 		try {
+			//removing from connection manager class
+			if (n.getCm().getServerChannels().contains(serverChannels.get(i))) {
+				n.getCm().getServerChannels().get(i).close();
+				n.getCm().getServerChannels().remove(serverChannels.get(i));
+			}
+			//removing from communicate
 			serverChannels.get(i).close();
 			serverChannels.remove(i);
 			turns.remove(i);
+
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -355,19 +362,11 @@ public class Communicate {
 
 
 	/*Getters and Setters */
-	public int getActiveServers() {
-		return activeServers;
-	}
-
-	public void setActiveServers(int activeServers) {
-		this.activeServers = activeServers;
-	}
 
 	public ArrayList<SocketChannel> getChan() {
 		return chan;
 	}
 
-	public void setChan(ArrayList<SocketChannel> chan) {
-		this.chan = chan;
-	}
+	//must update size as well
+	public void setChan(ArrayList<SocketChannel> chan) {this.chan = chan;}
 }

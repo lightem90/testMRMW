@@ -25,7 +25,7 @@ public class FailureDetector {
     public FailureDetector(ArrayList<Integer>ids, Node n){
 
         activeNodes = new HashMap<>(ids.size());
-        activeNodes.put(n.getMySett().getNodeId(), 0);
+        activeNodes.put(n.getSettings().getNodeId(), 0);
         current = n;
         leader_id = -1;
         //Heartbeat value becomes a function of the total number of nodes
@@ -53,7 +53,7 @@ public class FailureDetector {
         while (it.hasNext()) {
             int i = it.next();
             //in the active nodes I consider myself as well (needed in leader election for views comparison)
-            if (!(i == n) && !(i==current.getMySett().getNodeId())){
+            if (!(i == n) && !(i==current.getSettings().getNodeId())){
             //checking with heartbeat, if it gets too big I remove the node (counting it as inactive)
             int newVal = activeNodes.get(i)+1;
 

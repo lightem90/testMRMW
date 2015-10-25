@@ -4,7 +4,6 @@ import NetworkPrimitives.ConnectionManager;
 import NetworkPrimitives.Settings;
 import Structures.Tag;
 import Structures.View;
-import electMasterService.electMasterService;
 
 import java.io.IOException;
 import java.util.*;
@@ -16,7 +15,7 @@ public class Node {
     private View localView;
     private View proposedView;
     private Tag localTag;
-    private Settings mySett;
+    private Settings settings;
     private FailureDetector FD;
     private ConnectionManager cm;
 
@@ -29,10 +28,10 @@ public class Node {
     /* Constructor with custom settings */
     public Node(Settings settings) {
 
-        mySett = settings;
+        this.settings = settings;
         //initializing initial tag with all zeroes and my id, localView at start it is just me active
-        localTag = new Tag(mySett.getNodeId(),0,0);
-        localView = new View(String.valueOf(mySett.getNodeId()));
+        localTag = new Tag(this.settings.getNodeId(),0,0);
+        localView = new View(String.valueOf(this.settings.getNodeId()));
         localView.setArrayFromValueString();
         cm = new ConnectionManager(this);
         setIsMaster(false);
@@ -45,11 +44,11 @@ public class Node {
 
         //retrieving the array of server ids
         ArrayList<Integer> ids = cm.init();
-        mySett.setNumberOfNodes(ids.size());
-        mySett.setQuorum((ids.size()/2)+1);
+        settings.setNumberOfNodes(ids.size());
+        settings.setQuorum((ids.size()/2)+1);
         FD = new FailureDetector(ids,this);
 
-        System.out.println("Setting up node in system with: " + mySett.getNumberOfNodes() + " nodes, " + mySett.getQuorum() + " quorum");
+        System.out.println("Setting up node in system with: " + settings.getNumberOfNodes() + " nodes, " + settings.getQuorum() + " quorum");
 
         try {
 
@@ -74,7 +73,7 @@ public class Node {
 
             //answering requests
             cm.run();/*
-            if (FD.getLeader_id() != -1 && FD.getActiveNodes().size() >= mySett.getQuorum()) {
+            if (FD.getLeader_id() != -1 && FD.getActiveNodes().size() >= settings.getQuorum()) {
 
                 Thread operate = new Thread() {
                 public void run() {
@@ -94,7 +93,7 @@ public class Node {
             operate.start();
             }
             /*
-            if (FD.getLeader_id() != -1 && FD.getActiveNodes().size() >= mySett.getQuorum()) {
+            if (FD.getLeader_id() != -1 && FD.getActiveNodes().size() >= settings.getQuorum()) {
                 Random r = new Random();
                 try {
                     Thread.sleep(RANDOM_SEED * 1000);
@@ -124,12 +123,12 @@ public class Node {
     }
 
 
-    public Settings getMySett() {
-        return mySett;
+    public Settings getSettings() {
+        return settings;
     }
 
-    public void setMySett(Settings mySett) {
-        this.mySett = mySett;
+    public void setSettings(Settings settings) {
+        this.settings = settings;
     }
 
 
