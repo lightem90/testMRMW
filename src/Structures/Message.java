@@ -3,6 +3,10 @@ package Structures;
 //Core of message passing system, we use this class to store and share the information the servers need to know
 public class Message {
 
+	enum MessageType{
+		INIT,INIT_ACK,QUERY, QUERY_ACK, PREWRITE, PREWRITE_ACK, FINALIZE, FINALIZE_ACK, GOSSIP
+	}
+
 	private String requestType;
 	private View view;
 	private Tag tag;
