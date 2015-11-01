@@ -10,6 +10,12 @@ import java.util.*;
 
 public class Node {
 
+    public enum State{
+
+        ANSWERING, WRITING, READING
+
+    }
+
 
     // Class variables and object
     private View localView;
@@ -71,40 +77,7 @@ public class Node {
         System.out.println("Running ...");
         while (true) {
 
-            //answering requests
-            cm.run();/*
-            if (FD.getLeader_id() != -1 && FD.getActiveNodes().size() >= settings.getQuorum()) {
-
-                Thread operate = new Thread() {
-                public void run() {
-                    try {
-                        Thread.sleep(RANDOM_SEED * 1000);
-
-                        if (isMaster)
-                            cm.operationMaster();
-                        else cm.operation();
-
-                    } catch(InterruptedException v) {
-                        System.out.println(v);
-                    }
-                }
-            };
-
-            operate.start();
-            }
-            /*
-            if (FD.getLeader_id() != -1 && FD.getActiveNodes().size() >= settings.getQuorum()) {
-                Random r = new Random();
-                try {
-                    Thread.sleep(RANDOM_SEED * 1000);
-                } catch (InterruptedException e) {
-                    System.out.println("Sleep failed");
-                    e.printStackTrace();
-                }
-                cm.operation();
-            }
-            */
-
+            cm.run();
 
         }
 

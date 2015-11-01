@@ -24,6 +24,9 @@ import java.util.*;
  */
 public class ConnectionManager {
 
+    public final static String SEPARATOR = "/";
+    public final static String ACK_SEPARATOR = "_";
+
     //Class constants
     private final static String ADDRESS_PATH = "address.txt";
     private final static int PORT = 3000;
@@ -40,13 +43,21 @@ public class ConnectionManager {
     private ArrayList<SocketChannel> serverChannels;
     private ArrayList<InetSocketAddress> nodesToConnect;
     private Map<Integer,InetSocketAddress> otherNodesAddress;
+
+    //Here I store the pair Tag - View that I use to answer
     private Map<Tag, View> rep;
+    //Here I store the View sent by the sender (should be the one dictated by the leader)
     private Map<Integer,Message> replica;
+    //Here I store the proposedView of the Leader Election procedure, should be the FD of the nodes as well
+    private Map<Integer,Message> replicaPropView;
 
     // Custom objects
     private Communicate comm;
     private Node n;
     private EncDec ED;
+
+    //numeric identifier for each phase
+    private Node.State state;
 
 
     // Initialization
@@ -84,39 +95,30 @@ public class ConnectionManager {
             // for each line if it's not my port I'll add the address to the array of addresses
             for (i = 0; i < lines.size(); i++) {
 
+                //EMULAB strings are being removed since we won't use it anymore
                 String line = lines.get(i);
                 System.out.println(line);
-                String[] tokens = line.split(" ");
+                //position 0 address, 1 port/id
+                String[] tokens = line.split(":");
 
                 //filling an array with all the ids to pass it to FD and a map with id-address that may be useful later on
-                ids.add(Integer.parseInt(tokens[0]));
-                otherNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(tokens[1],Integer.parseInt(tokens[0])));
+                ids.add(Integer.parseInt(tokens[1]));
+                otherNodesAddress.put(Integer.parseInt(tokens[1]), new InetSocketAddress(tokens[0],Integer.parseInt(tokens[1])));
                 //otherNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1]))); //local
 
                 //String[] portTokens = tokens[1].split(":"); //local
                 //ignoring smaller ids
-                if (Integer.parseInt(tokens[0]) <= n.getSettings().getNodeId())
+                if (Integer.parseInt(tokens[1]) < n.getSettings().getNodeId())
                     continue;
 
-                if (Integer.parseInt(tokens[0]) == n.getSettings().getNodeId())
-                    hostAddress = new InetSocketAddress(tokens[1],n.getSettings().getNodeId());
+                if (Integer.parseInt(tokens[1]) == n.getSettings().getNodeId())
+                    hostAddress = new InetSocketAddress(tokens[0],n.getSettings().getNodeId());
                    //hostAddress = new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
                 else {
                     //id is bigger than my id
-                    nodesToConnect.add(new InetSocketAddress(tokens[1],Integer.parseInt(tokens[0])));
+                    nodesToConnect.add(new InetSocketAddress(tokens[0],Integer.parseInt(tokens[1])));
                    //nodesToConnect.add(new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
                 }
-                /* EMULAB
-                //port is handled differently on EMULAB, lines with "local" next to them are for local lines with "emulab" are for emulab
-                String[] portTokens = tokens[1].split(":"); //local
-
-                if (Integer.parseInt(tokens[0]) == n.getSettings().getNodeId())
-                    //hostAddress = new InetSocketAddress(tokens[1],PORT); //emulab
-                    hostAddress = new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
-                else
-                    //otherNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(tokens[1],PORT)); //emulab
-                    otherNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1]))); //local
-                    */
             }
 
             try {
@@ -129,6 +131,7 @@ public class ConnectionManager {
                 hostAddress = serverChannel.getLocalAddress();
                 serverChannel.register(socketSelector, SelectionKey.OP_ACCEPT);
                 selector = socketSelector;
+                comm = new Communicate(n);
 
             } catch (IOException e) {
 
@@ -163,6 +166,7 @@ public class ConnectionManager {
     public void run() {
 
             try {
+
                 // listening for connections, initializes the selector with all socket ready for I/O operations
                 selector.select();
 
@@ -187,28 +191,70 @@ public class ConnectionManager {
                         String[] tokens = readMessages(key);
                         System.out.println("Received " + tokens.length + " message/s");
 
+                        //For each message read from buffer
                         for (String msg : tokens) {
-
 
                             Message m = ED.decode(msg);
                             System.out.println("Received " + m.getRequestType() + " from node #" + m.getSenderId());
                             //ignoring invalid messages (sender -1 is invalid)
                             if (m.getSenderId() == -1)
+                                //Discard invalid message
                                 continue;
+
+                            //Should be a valid message: updating FD
                             n.getFD().updateFDForNode(m.getSenderId());
+                            if (state == Node.State.ANSWERING) {
+                                //Most probable case is handled immediately, no ongoing operation so I just answer
+                                //Messages with "_ack" are discarded automatically
+                                answer(m, (SocketChannel) key.channel());
+                                continue;
+                            }
 
-                            //Handling init messages first, in this way I shouldn't have problem with the others messages
-                            if (handleInit(m, (SocketChannel) key.channel()))
-                                parseInput(m, (SocketChannel) key.channel());
+                            //If I'm here I'm performing some operations through communicate class BUT I have still to answer
+                            String[] reqToken = m.getRequestType().split(ACK_SEPARATOR);
 
-                            /* Used for testing
-                            if (n.getSettings().getNodeId() == 5000)
-                                write(n.getLocalView());
-                                */
+                            if (reqToken.length == 2) {
+                                //Meaning is a response message (_ack) to handle properly by the communicate class
+                                Node.State nextState = null;
 
-                            //This must start as soon as we know a quorum is present
-                            //if (n.getFD().getActiveNodes().size() >= n.getSettings().getQuorum() && n.getFD().getLeader_id() == -1)
-                            //    startElectionRoutine();
+                                switch (state) {
+
+                                    case WRITING:
+                                        //If I'm querying I still have to check if this is the answer of a query request and not of an old phase
+                                        nextState = comm.handleWriteMsg(m, reqToken[0]);
+                                        if (nextState != state) {
+                                            System.out.println("I'm done " + state + ", now I'm " + nextState);
+                                            state = nextState;
+                                        }
+                                        break;
+
+                                    case READING:
+                                        //If I'm querying I still have to check if this is the answer of a query request and not of an old phase
+                                        state = comm.handleReadMsg(m,reqToken[0]);
+                                        if (nextState != state) {
+                                            System.out.println("I'm done " + state + ", now I'm " + nextState);
+                                            state = nextState;
+                                        }
+                                        break;
+
+                                    case ANSWERING:
+                                        //Receive an ack of an old request, do nothing
+                                        break;
+
+                                    default:
+                                        //Should be unreachable
+                                }
+
+                            }
+                            else
+                                //Not an ack so I just have to answer
+                                answer(m,(SocketChannel)key.channel());
+
+                            /* TODO: check the right position for this
+                            //This must start as soon as we know a quorum of nodes is detected or the leader goes offline
+                            if (n.getFD().getActiveNodes().size() >= n.getSettings().getQuorum() && n.getFD().getLeader_id() == -1)
+                               startElectionRoutine();
+                            */
                         }
 
 
@@ -225,120 +271,80 @@ public class ConnectionManager {
 
     }
 
-    private boolean handleInit(Message receivedMessage, SocketChannel channel) throws IOException {
-
-        switch (receivedMessage.getRequestType()) {
-                    /*New messages to handle new server connection, init_ack is used only to update client FD, init connects the new client and updates communicate obj (chans, serverNumber etc..) */
-                case "init":
-                    //update serverChannels and serverCount
-                    replica.put(receivedMessage.getSenderId(),receivedMessage);
-                    //handleConnectionRequest("init_ack",receivedMessage.getSenderId()); We don't need this anymore
-                    int l_id = n.getFD().getLeader_id();
-                    Tag leader = new Tag(l_id, l_id, l_id);
-                    //sending as answer my local view (all the nodes my fd says are active
-                    Message response = new Message("init_ack", leader, n.getLocalView(), n.getSettings().getNodeId());
-                    sendMessage(channel,response);
-                    return true;
-
-                case "init_ack":
-
-                    if (receivedMessage.getTag().getId() == -1 && receivedMessage.getTag().getLabel() == -1)
-                        //no leader is present, just warning
-                        System.out.println("No leader present in the system");
-                    else {
-                        System.out.println("Leader is: " + receivedMessage.getTag().getLabel());
-                        n.getFD().setLeader_id(receivedMessage.getTag().getLabel());
-                    }
-                    replica.put(receivedMessage.getSenderId(), receivedMessage);
-                    return true;
-                default:
-                    return false;
-        }
-    }
-
-
-    private void parseInput(Message receivedMessage, SocketChannel channel) throws IOException {
+    /* Answering to the received request in different ways depending upon the request. The important thing to notice is that it replies with the same request type (idSender + rndID) and _ack */
+    private void answer(Message receivedMessage, SocketChannel channel) {
 
         Tag maxTag = findMaxTagFromSet(rep);
+        //Splitting: the first field is a redundant for who is sending the request and the second a rnd number identifying the phase
+        String tokenType[] = receivedMessage.getRequestType().split(SEPARATOR);
 
-            switch (receivedMessage.getRequestType()) {
+
+            switch (tokenType[2]) {
 
                 case "query":
-                    sendMessage(channel, new Message("query-ack", maxTag, rep.get(maxTag), n.getSettings().getNodeId()));
-                    replica.put(receivedMessage.getSenderId(),receivedMessage);
+                    sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", maxTag, rep.get(maxTag), n.getSettings().getNodeId()));
+                    //saving proper message in replica map, in this way I can retrieve the node view
+                    replica.put(receivedMessage.getSenderId(), receivedMessage);
                     break;
 
                 case "pre-write":
+
+                    //In the case I receive a pre-write message, if the tag is the highest I know i set the new view as .PRE, otherwise I send an invalid ack
                     Tag newTag = receivedMessage.getTag();
-
-                    System.out.println("Received tag has: label->" + newTag.getLabel() + " counter->" + newTag.getCounters().getFirst().getCounter() + " written by->" + newTag.getCounters().getFirst().getId());
-                    System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
-
                     if (maxTag.compareTo(newTag) >= 0) {
                         System.out.println("Received tag smaller than local max tag");
-                        sendMessage(channel, new Message("pre-write-ack", new Tag(-1,-1,-1), new View (""), n.getSettings().getNodeId()));
+                        sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", new Tag(-1,-1,-1), new View (""), n.getSettings().getNodeId()));
                         break;
                     }
                     else {
 
-                        //only master writes
-                        //n.getFD().setLeader_id(receivedMessage.getSenderId());
-
-                        n.setLocalTag(newTag);
-                        n.setLocalView(receivedMessage.getView());
+                        //I think this is wrong, if a prewrite is received it shouldn't become localView now. It should wait the finalize message and until that should be stored in rep
+                        //n.setLocalTag(newTag);
+                        //n.setLocalView(receivedMessage.getView());
                         n.getLocalView().setStatus(View.Status.PRE);
-                        rep.put(n.getLocalTag(), n.getLocalView());
-                        sendMessage(channel, new Message("pre-write-ack", n.getLocalTag(), n.getLocalView(), n.getSettings().getNodeId()));
+                        rep.put(receivedMessage.getTag(), receivedMessage.getView());
+                        //Responding with receivedTag. Using the attribute from message instead of newTag for readability
+                        sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", receivedMessage.getTag(), receivedMessage.getView(), n.getSettings().getNodeId()));
+                        //saving proper message in replica map, in this way I can retrieve the node view
+                        replica.put(receivedMessage.getSenderId(), receivedMessage);
                     }
                     break;
 
                 case "finalize":
-                    //saving proper message in replica map, in this way I can retrieve the node view NO! invalid view (yet)
-                    //replica.put(receivedMessage.getSenderId(), receivedMessage);
                     Tag bestTag = receivedMessage.getTag();
-                    //System.out.println("Received tag has: label->" + bestTag.getLabel() + " counter->" + bestTag.getCounters().getFirst().getCounter() + " written by->" + bestTag.getCounters().getFirst().getId());
-                    //System.out.println("Local tag has: label->" + n.getLocalTag().getLabel() + " counter->" + n.getLocalTag().getCounters().getFirst().getCounter() + " written by->" + n.getLocalTag().getCounters().getFirst().getId());
 
                     if (rep.containsKey(bestTag)) {
                         rep.get(bestTag).setStatus(View.Status.FIN);
-                        sendMessage(channel, new Message("fin-ack", n.getLocalTag(), n.getLocalView(), n.getSettings().getNodeId()));
+                        //View is finalized I can use that as local now
+                        n.setLocalTag(bestTag);
+                        n.setLocalView(rep.get(bestTag));
+                        sendMessage(channel, new Message(receivedMessage.getRequestType() + ACK_SEPARATOR + "ack", n.getLocalTag(), n.getLocalView(), n.getSettings().getNodeId()));
+                        //saving proper message in replica map, in this way I can retrieve the node view
+                        replica.put(receivedMessage.getSenderId(), receivedMessage);
                     } else {
 
                         View tmp = new View("");
                         tmp.setStatus(View.Status.FIN);
                         rep.put(bestTag, tmp);
-                        sendMessage(channel, new Message("fin-ack", bestTag, tmp, n.getSettings().getNodeId()));
+                        sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", bestTag, tmp, n.getSettings().getNodeId()));
                     }
-                    n.getLocalView().setStatus(View.Status.FIN);
+
                     break;
 
                 case "gossip":
-                    //saving proper message in replica map, in this way I can retrieve the node view
-                    replica.put(receivedMessage.getSenderId(), receivedMessage);
+
                     Tag latestTag = receivedMessage.getTag();
                     if (rep.containsKey(latestTag))
+                        //storing a finalized view from a gossip message. TODO: is this right? (check the algorithm)
                         rep.put(latestTag, receivedMessage.getView());
+
+                    //saving proper message in replica map, in this way I can retrieve the node view
                     replica.put(receivedMessage.getSenderId(), receivedMessage);
                     break;
-                /*
-                case "userReadRequest":
-                    read();
-                    sendMessage(channel, new Message("success", n.getLocalTag(), n.getLocalView(), n.getSettings().getNodeId()));
-                    break;
-
-                case "userWriteRequest":
-                    write(receivedMessage.getView());
-                    System.out.println("Replying to request with result: success");
-                    sendMessage(channel, new Message("success", n.getLocalTag(), n.getLocalView(), n.getSettings().getNodeId()));
-                    break;
-                    */
                 //Reading -1
                 default:
                     System.out.println("Server or reader/writer crashed " +receivedMessage.getRequestType());
-                    if (serverChannels.contains(channel))
-                        serverChannels.remove(channel);
-                    channel.close();
-                    comm.setChan(serverChannels);
+
             }
 
 
@@ -348,7 +354,7 @@ public class ConnectionManager {
 
 
 
-    //Networking functions
+    //Networking functions**********************************************************************************************
 
     private void accept(SelectionKey key) throws IOException {
 
@@ -358,64 +364,48 @@ public class ConnectionManager {
         socketChannel.register(selector, SelectionKey.OP_READ);
         //add the accepted socket to the list of active servers
         serverChannels.add(socketChannel);
+        //and updating channels of communicate
+        comm.setChan(serverChannels);
 
         System.out.println("Client connected");
     }
 
-    // if a read request arises from selector
-    private void read() {
+    /* method for establishing connection to other server */
+    private void finishConnection(SelectionKey key) throws IOException {
 
-        Tag maxTag;
-        if ((maxTag = comm.query()) == null)
-            return;
-        System.out.println("Received tag after query has: label->" + maxTag.getLabel() + " counter->" + maxTag.getCounters().getFirst().getCounter() + " written by->" + maxTag.getCounters().getFirst().getId());
-        View rcvView = comm.finalizeRead();
-
-        n.setLocalTag(maxTag);
-        n.setLocalView(rcvView);
-        for (SocketChannel sc : serverChannels) {
+        SocketChannel socketChannel = (SocketChannel) key.channel();
+        if (!serverChannels.contains(socketChannel)) {
             try {
-                sendMessage(sc, new Message("gossip", maxTag, rcvView, n.getSettings().getNodeId()));
+                // If the channel is not in our list of connected sockets, finish the connection.
+                // If the connection operation failed this will raise an IOException.
+                if (socketChannel.finishConnect())
+                    key.cancel();
+
+                if (socketChannel.isConnected()) {
+                    serverChannels.add(socketChannel);
+
+                    //update view as soon as I see an active connection
+                    for (Integer id : otherNodesAddress.keySet()) {
+
+                        //Yes no maybe? xD
+                        if (otherNodesAddress.get(id).equals(socketChannel.getRemoteAddress())) {
+                            System.out.println("Detected connection from:" + id + ", updating FD");
+                            n.getFD().updateFDForNode(id);
+                        }
+                    }
+                }
+
+                //TODO: What happens to old channels when I do setChan to older chans in communicate? For notw setChan updates the communicate chans checking the differences
+                comm.setChan(serverChannels);
+
             } catch (IOException e) {
-                e.printStackTrace();
+
+                removeChannelFromList(socketChannel);
+                removeChannelFromComm(socketChannel);
+                reRegisterKey(socketChannel);
+                return;
             }
         }
-
-    }
-
-    private void write(View newView) {
-
-        long tStart = System.currentTimeMillis();
-
-        Tag maxTag;
-        if ((maxTag = comm.query()) == null)
-            return;
-
-        System.out.println("Received tag after query has: label->" + maxTag.getLabel() + " counter->" + maxTag.getCounters().getFirst().getCounter() + " written by->" + maxTag.getCounters().getFirst().getId());
-        Tag newTag = generateNewTag(maxTag);
-        System.out.println("Writing new tag: label->" + newTag.getLabel() + " counter->" + newTag.getCounters().getFirst().getCounter() + " written by->" + newTag.getCounters().getFirst().getId());
-
-        if (comm.preWrite(newTag, newView)) {
-            n.setLocalTag(newTag);
-            n.setLocalView(newView);
-            rep.put(newTag, newView);
-            if (comm.finalizeWrite())
-                System.out.println("Write complete correctly");
-            else
-                System.out.println("Write error");
-
-            long tEnd = System.currentTimeMillis();
-            long tDelta = tEnd - tStart;
-            double elapsedSeconds = tDelta / 1000.0;
-
-            System.out.println("Elapsed time for write: " + elapsedSeconds);
-        }
-        else {
-            System.out.println("Can't complete pre-write - aborting");
-            return;
-        }
-
-
     }
 
     /* Close all the channels of from this node to the sockets */
@@ -438,46 +428,9 @@ public class ConnectionManager {
 
     }
 
-    /* method for establishing connection to other server */
-    private void finishConnection(SelectionKey key) throws IOException {
 
-        SocketChannel socketChannel = (SocketChannel) key.channel();
-        if (!serverChannels.contains(socketChannel)) {
-            try {
-                // If the channel is not in our list of connected sockets, finish the connection.
-                // If the connection operation failed this will raise an IOException.
-                if (socketChannel.finishConnect())
-                    key.cancel();
 
-                if (socketChannel.isConnected()) {
-                    serverChannels.add(socketChannel);
-
-                    //update view as soon as I see an active connection
-                    for (Integer id : otherNodesAddress.keySet()) {
-
-                        if (otherNodesAddress.get(id).equals(socketChannel.getRemoteAddress())) {
-                            System.out.println("Detected connection from:" + id + ", updating FD");
-                            n.getFD().updateFDForNode(id);
-                        }
-                    }
-                }
-
-                Message init = new Message("init", n.getLocalTag(), n.getLocalView(), n.getSettings().getNodeId());
-                sendMessage(socketChannel, init);
-
-                //initializing communicate, needed here to keep up of new connection. TODO: What happens to old channels when I do setChan to older chans in communicate?
-                comm.setChan(serverChannels);
-
-            } catch (IOException e) {
-
-                removeChannelFromList(socketChannel);
-                removeChannelFromComm(socketChannel);
-                socketChannel.close();
-                key.cancel();
-                return;
-            }
-        }
-    }
+    //Algorithm**************************************************************************************************************************
 
     private void startElectionRoutine(){
 
@@ -488,22 +441,47 @@ public class ConnectionManager {
         System.out.println("Master elected with id: "+ n.getFD().getLeader_id());
             if (leader == -1){
                 System.out.println("No suitable leader, querying...");
-                read();
-                System.out.println("Query ended");
+                write(n.getProposedView());
+                //read();
+                //System.out.println("Query ended");
                 return;
 
             }
             if (leader == n.getSettings().getNodeId()) {
                 n.setIsMaster(true);
-                write(n.getLocalView());
+                n.setLocalView(n.getProposedView());
+                write(n.getProposedView());
             }
+
+    }
+    //Writes a view
+    public void write(View view){
+
+        //nothing to do here..
+        System.out.println("Writing: " + view.getValue());
+        comm.write(view);
+
+    }
+
+    public void write(){
+
+        //nothing to do here..
+        System.out.println("Writing: " + n.getLocalView().getValue());
+        comm.write(n.getLocalView());
+
+    }
+
+    public void read(){
+
+        System.out.println("Reading");
+        comm.read();
 
     }
 
 
 
 
-    //Utilities
+    //Utilities*******************************************************************************************************************
 
     /* finds the highest tag in rep map */
     private Tag findMaxTagFromSet(Map<Tag, View> map) {
@@ -549,30 +527,37 @@ public class ConnectionManager {
 
 
     /* writes message into buffer */
-    private void sendMessage(SocketChannel s, Message m) throws IOException {
+    private void sendMessage(SocketChannel s, Message m) {
 
-        System.out.println("Trying to send: " + m.getRequestType() + " to " + s.getRemoteAddress().toString());
+        String remoteAdd=null;
+        try {
+        remoteAdd =  s.getRemoteAddress().toString();
+        System.out.println("Trying to send: " + m.getRequestType() + " to " +remoteAdd);
 
         if (s.isConnected()){
 
-            System.out.println("Sending: " + m.getRequestType() + " to " + s.getRemoteAddress().toString());
+            System.out.println("Sending: " + m.getRequestType() + " to " + remoteAdd);
             writeBuffer.clear();
             writeBuffer.put(ED.encode(m).getBytes());
             writeBuffer.flip();
 
             while (writeBuffer.hasRemaining())
-                s.write(writeBuffer); // writing messsage to server
-            writeBuffer.clear();
-        }
-        else {
-            System.out.println("Channel not connected, can't send message: " +m.getRequestType());
+                    s.write(writeBuffer); // writing messsage to server
 
+            writeBuffer.clear();
+            }
+
+        }  catch (IOException e) {
+            System.out.println("Error in writing message to: "+remoteAdd);
+            reRegisterKey(s);
+            serverChannels.remove(s);
+            comm.setChan(serverChannels);
         }
 
 
     }
 
-    private String[] readMessages(SelectionKey key) throws IOException {
+    private String[] readMessages(SelectionKey key) {
 
         String message = "";
         try{
@@ -598,7 +583,7 @@ public class ConnectionManager {
 
     }
 
-
+    //Da usare? non credo
     void removeChannelFromList(SocketChannel toRemove){
 
         if (serverChannels.contains(toRemove))
@@ -646,86 +631,13 @@ public class ConnectionManager {
         this.replica = replica;
     }
 
-
-    /* Needed to update the replica message: we imply that if we receive a init message all the other nodes receive the same message too */
-    /*private void updateRep (int id) {
-
-        if (id != -1){
-
-        Iterator<Integer> i = replica.keySet().iterator();
-
-        if (replica.size() > 0) {
-            while (i.hasNext()) {
-                Message m = replica.get(i.next());
-
-                if (m.getSenderId() != id) {
-
-                    System.out.println("Received init from: " + id + " updating view of node: " + m.getSenderId());
-                    View v = m.getView();
-                    v.setArrayFromValueString();
-                    ArrayList<Integer> ids = v.getIdArray();
-                    System.out.println("Old view: " + v.getValue());
-                    if (!ids.contains(id))
-                        ids.add(id);
-                    v.setIdArray(ids);
-                    v.setStringFromArrayString();
-                    System.out.println("New view: " + v.getValue());
-                    m.setView(v);
-                    replica.put(id, m);
-
-                }
-
-
-            }
-        }
-        }
+    public Node.State getState() {
+        return state;
     }
-    */
 
-
-
-
-    /* this handles the case in which we receive a init message and we have to update the list of nodes addresses, channels and FD (and answering) */
-    /*private void handleConnectionRequest(String type, int id){
-
-        //Getting the id
-        SocketAddress toAdd = null;
-        SocketChannel channelToAdd = null;
-
-        if (otherNodesAddress.containsKey(id) && (id != n.getSettings().getNodeId()))
-            toAdd = otherNodesAddress.get(id);
-        else {
-            System.out.println("Cannot detect newly connected node");
-            return;
-        }
-
-        try {
-
-            //no checks there shouldn't be problems while connecting to a requesting connection node
-            channelToAdd = SocketChannel.open();
-            channelToAdd.configureBlocking(false);
-            channelToAdd.connect(toAdd);
-
-            while(channelToAdd.isConnectionPending())
-                channelToAdd.finishConnect();
-            if (!serverChannels.contains(channelToAdd))
-                serverChannels.add(channelToAdd);
-
-            //if in some way I know the leader id, I send it as ack to a newly connected node
-            int l_id = n.getFD().getLeader_id();
-            Tag leader = new Tag(l_id, l_id, l_id);
-
-            //sending as answer my local view (all the nodes my fd says are active
-            Message response = new Message(type, leader, n.getLocalView(), n.getSettings().getNodeId());
-            sendMessage(channelToAdd,response);
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-
+    public void setState(Node.State state) {
+        this.state = state;
     }
-    */
 
 
 }

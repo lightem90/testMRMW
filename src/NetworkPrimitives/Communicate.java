@@ -1,5 +1,6 @@
 package NetworkPrimitives;
 
+import Structures.Counter;
 import Structures.Message;
 import Structures.Tag;
 import Structures.View;
@@ -9,12 +10,14 @@ import EncoderDecoder.EncDec;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.*;
 
 public class Communicate {
+
+	enum Phase {
+		QUERY, WRITE, FINALIZE, ANSWERING
+	}
+
 
 	//Class constants
 	private static final int BUFFER_SIZE = 1024; // random for now
@@ -23,341 +26,406 @@ public class Communicate {
 
 
 	//Class variables
-	private ArrayList<Boolean> turns;
+	private HashMap<Integer, Message> turnsValid;
+	private HashMap<Integer, Message> turnsInvalid;
 	private ArrayList<SocketChannel> chan;
 
 	//Custom objects
-	private Tag lastTag;
 	private Node n;
 	private EncDec ED;
-	private ConnectionManager caller;
+	private View toWrite;
 
-	private enum Status {
-		NOTACK, NOTSENT, ACK
-	}
+	private int phaseId;
+	private Phase c_phase;
+	private Phase c_phaseNext;
+	private Node.State c_state;
+
 
 	//initialization
 	public Communicate(Node currNode) {
 
-		chan = n.getCm().getServerChannels();
+		n = currNode;
+		chan = currNode.getCm().getServerChannels();
+		turnsValid = new HashMap<>();
+		turnsInvalid = new HashMap<>();
+		ED = new EncDec();
+
+	}
 
 
-		//initializing all position to true, meaning we have to send to everyone
-		turns = new ArrayList<>(chan.size());
-		for (int i = 0; i < chan.size(); i++) {
+	//initializing write operation
+	public void write(View V) {
 
-			turns.add(true);
+		//Storing the view to write
+		toWrite = V;
+		//notifies the manager I'm writing
+		c_state = Node.State.WRITING;
+		n.getCm().setState(c_state);
+		//Setting phases up
+		c_phase = Phase.QUERY;
+		c_phaseNext = Phase.WRITE;
+
+		phaseId = getRndId();
+		//sending query to everyone
+		sendToEveryone(new Message(n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId + ConnectionManager.SEPARATOR +"query",
+				n.getLocalTag(),n.getLocalView(), n.getSettings().getNodeId()));
+
+	}
+
+	//initializing read operation
+	public void read() {
+
+		//notifies the manager that I'm reading
+		c_state = Node.State.READING;
+		n.getCm().setState(c_state);
+		//setting phases up
+		c_phase = Phase.QUERY;
+		c_phaseNext = Phase.FINALIZE;
+
+		//phase identifier
+		phaseId = getRndId();
+		//first step is to send to everyone a query request
+		sendToEveryone(new Message(n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId + ConnectionManager.SEPARATOR +"query",
+				n.getLocalTag(),n.getLocalView(), n.getSettings().getNodeId()));
+
+	}
+
+
+	public Node.State handleWriteMsg(Message rcv, String req) {
+
+		String[] tokens = req.split(ConnectionManager.SEPARATOR);
+		//First position: sender id,
+		//Second: phaseID
+		//Third: type
+
+		boolean isStored = turnsValid.containsKey(rcv.getSenderId());
+		if (isStored)
+			//_ack message from this node already exists.. so probably is an old one o a very recent/fast one... don't know what to do with it
+			return c_state;
+		else {
+			//Switch depending on the current phase
+			switch (c_phase) {
+				case QUERY:
+					//if I'm querying and the received message is a query response, I don't have a message stored from that id, and the identifiers are correct
+					if (tokens[2].equals("query") && !isStored && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) { // TODO: && rcv.rndID = rndID){
+
+						System.out.println("Received expected message: " + req);
+						turnsValid.put(rcv.getSenderId(), rcv);
+						System.out.println("Total of query ack received: " + turnsValid.size());
+						//If the quorum is reached step to next phase and clear turnsValid
+						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
+
+							//Extracts the maximum tag comparing the local and the received ones
+							Tag max = findMaxTagFromMessages(n.getLocalTag());
+
+							phaseId = getRndId();
+							//Sends a prewrite with a generated new tag
+							sendToEveryone(new Message("pre-write" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId,
+									generateNewTag(max), toWrite, n.getSettings().getNodeId()));
+
+							//this procedure is over so I step to pre-writing and I clear turnsValid map
+							nextPhase();
+							emptyMap(turnsValid);
+
+							return c_state;
+
+						} else
+							return c_state;
+					}
+					//"not interesting" message
+					break;
+
+				case WRITE:
+					//TODO: 2 alternatives: abort writing if prewrite fails after a fixed amout of time or counting invalid answers like this case
+					//if I'm querying and the received message is a query response and I don't have a message stored from that id
+					if (tokens[2].equals("pre-write") && !isStored && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
+						if (!(rcv.getTag().getLabel() == -1) && !(rcv.getTag().getId() == -1))
+							//if it is a legit answer
+							turnsValid.put(rcv.getSenderId(), rcv);
+						else
+							turnsInvalid.put(rcv.getSenderId(),rcv);
+						//If the quorum is reached for valid response step to next phase and clear turnsValid
+						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
+
+							nextPhase();
+							emptyMap(turnsValid);
+
+							phaseId = getRndId();
+							//Sends a finalize message with the maximum tag (the nodes respond with it if its valid) and the view to finalize
+							sendToEveryone(new Message("pre-write" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId,
+									rcv.getTag(), toWrite, n.getSettings().getNodeId()));
+
+							return c_state;
+
+						} //else, if a quorum of valid answers is impossible
+						else if (turnsInvalid.size() >= n.getSettings().getQuorum() - 1){
+
+							//abort write: resetting phases and states
+							abortWrite();
+							return c_state;
+
+						}
+					}
+					//"not interesting" message
+					break;
+
+				case FINALIZE:
+					//if I'm querying and the received message is a query response and I don't have a message stored from that id
+					if (tokens[2].equals("finalize") && !isStored && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
+						turnsValid.put(rcv.getSenderId(), rcv);
+						//If the quorum is reached step to next phase and clear turnsValid
+						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
+
+							//I'm done writing
+							toWrite.setStatus(View.Status.FIN);
+							n.setLocalTag(rcv.getTag());
+							n.setLocalView(toWrite);
+
+							nextPhase();
+							emptyMap(turnsValid);
+
+							return c_state;
+
+						} else return c_state;
+					}
+					//"not interesting" message
+					break;
+
+			}
+
+		}
+	return c_state;
+
+	}
+
+	public Node.State handleReadMsg(Message rcv, String req) {
+
+		String[] tokens = req.split(ConnectionManager.SEPARATOR);
+		//First position: sender id,
+		//Second: phaseID
+		//Third: type
+
+		boolean isStored = turnsValid.containsKey(rcv.getSenderId());
+		if (isStored)
+			//do nothing, probably was an old message
+			return c_state;
+		else {
+			//Switch depending on the current phase
+			switch (c_phase) {
+				case QUERY:
+					//if I'm querying and the received message is a query response, I don't have a message stored from that id, and the identifiers are correct
+					if (tokens[2].equals("query") && !isStored && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) { // TODO: && rcv.rndID = rndID){
+
+						//If the quorum is reached step to next phase and clear turnsValid
+						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
+
+							//Extracts the maximum tag comparing the local and the received ones
+							Tag max = findMaxTagFromMessages(n.getLocalTag());
+							View rightView = findViewInMessages(max);
+
+							phaseId = getRndId();
+							//Sends finalize
+							sendToEveryone(new Message("finalize" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId,
+									max, rightView, n.getSettings().getNodeId()));
+
+							//this procedure is over so I step to pre-writing and I clear turnsValid map
+							nextPhase();
+							emptyMap(turnsValid);
+
+							return c_state;
+
+						} else
+							return c_state;
+					}
+
+				case FINALIZE:
+					//if I'm querying and the received message is a query response and I don't have a message stored from that id
+					if (req.equals("finalize") && !isStored) {
+						turnsValid.put(rcv.getSenderId(), rcv);
+						//If the quorum is reached I'm done reading
+						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
+
+							//set last received tag (they should be all equals)
+							n.setLocalTag(rcv.getTag());
+							//set the correct view CAN CAUSE TROUBLE BECAUSE I MAY SET AN EMPTY VIEW!
+							n.setLocalView(findViewInMessages(rcv.getTag()));
+
+
+							System.out.println("Read complete");
+							nextPhase();
+							emptyMap(turnsValid);
+
+							//gossiping
+							sendToEveryone(new Message("gossip" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + 1,
+									n.getLocalTag(), n.getLocalView(), n.getSettings().getNodeId()));
+
+							return c_state;
+
+						} else return c_state;
+					}
+			}
 
 		}
 
-		n = currNode;
-		ED = new EncDec();
-		caller = n.getCm();
-
+		return c_state;
 
 	}
+
+
+
+
 
 	/*
 	 * query() starts and completes a "query" request to every other server
 	 * returning the maximum tag value retrieved
 	 */
-	public Tag query() {
-
-		Message request = new Message("query", n.getLocalTag(),
-				n.getLocalView(), n.getSettings().getNodeId());
-		Message[] values = null;
 
 
-        //Initializing collector for waiting all answers with this obj communicate and the data to use
-		Collector c = new Collector(request,values,this);
+	private void sendToEveryone(Message m){
 
-
-		ExecutorService executorService = Executors.newSingleThreadExecutor();
-        //executing "run" method in collector
-		executorService.execute(c);
-		executorService.shutdown();
-
-
-        //waiting for termination
-		while (!executorService.isTerminated()){}
-
-
-		//last tag CAN'T be smaller than local tag, using the return value of collector (should be the same but in any case..)
-		lastTag=findMaxTagFromMessages(c.getReturnValues(), n.getLocalTag());
-
-		if(lastTag.compareTo(n.getLocalTag())>=0) //TODO: this check is useless, this condition is met in findMaxTagFromMessages
-			return lastTag;
-		return null;
-		}
-
-	/*
-	 * preWrite() starts and completes a "pre-write" request to every other
-	 * server returning true in case of success or false in case of failure
-	 */
-
-	public boolean preWrite(Tag newTag, View newView) {
-
-		Message request = new Message("pre-write", newTag, newView, n.getSettings().getNodeId());
-		lastTag = newTag;
-
-		Message[] values = null;
-
-		Collector c = new Collector(request,values,this);
-
-		ExecutorService executorService = Executors.newSingleThreadExecutor();
-		executorService.execute(c);
-		executorService.shutdown();
-
-		while (!executorService.isTerminated()){}
-
-		if (isValidResponse(c.getReturnValues(), new Tag(-1, -1, -1)))
-			return true;
-		else
-			return false;
-	}
-
-	/*
-	 * finalizeRead() starts and completes a "finalize" request to every other
-	 * server returning the View associated to the requested tag
-	 */
-	public View finalizeRead() {
-
-		Message request = new Message("finalize", lastTag, n.getLocalView(),
-				n.getSettings().getNodeId());
-
-		Message[] values = null;
-
-		Collector c = new Collector(request,values,this);
-
-		ExecutorService executorService = Executors.newSingleThreadExecutor();
-		executorService.execute(c);
-		executorService.shutdown();
-
-		while (!executorService.isTerminated()){}
-
-
-		int i = 0;
-		while (c.getReturnValues()[i] == null)
-			i++;
-		return c.getReturnValues()[i].getView();
-	}
-
-	/*
-	 * finalize() starts and completes a "finalize" request to every other
-	 * server returning true in case of success or false in case of failure
-	 */
-	public boolean finalizeWrite() {
-
-		Message request = new Message("finalize", lastTag, n.getLocalView(),
-				n.getSettings().getNodeId());
-
-		Message[] values = null;
-
-
-		Collector c = new Collector(request,values,this);
-
-		ExecutorService executorService = Executors.newSingleThreadExecutor();
-		executorService.execute(c);
-		executorService.shutdown();
-
-		while (!executorService.isTerminated()){}
-
-
-
-		return !(c.getReturnValues() == null);
-	}
-	public Message[] waitForQuorum(Message request) {
-
-		Message reply;
-        /*try {
-            for (SocketChannel c : chan) {
-
-                System.out.println("Chan: local->" + c.getLocalAddress().toString() + " remote-> " + c.getRemoteAddress().toString());
-
-            }
-        }catch (IOException e){}
-        */
-
-		Message[] values = new Message[chan.size()];
-		ArrayList<Status> status = new ArrayList<>(chan.size());
-
-		// initialize status and service variables, we have to send to everyone
-		int ackCounter = 0;
+		System.out.println("Sending '" + m.getRequestType() + "' to everyone");
 		for (int i = 0; i < chan.size(); i++) {
-			values[i] = null;
-			status.add(Status.NOTSENT);
-		}
-
-		//encoding message and writing it into the buffer
-		String toSend = ED.encode(request);
-		writeBuffer.clear();
-		writeBuffer.put(toSend.getBytes());
-
-		//writing message on EVERY open channel
-		for (int i = 0; i < chan.size(); i++) {
-
-				try {
-					System.out.println("Sending '"+request.getRequestType()+ "' query to server");
-
-					writeBuffer.flip();
-					while (writeBuffer.hasRemaining()) {
-						if (chan.get(i).isConnectionPending() || !chan.get(i).isConnected())
-							chan.get(i).finishConnect();
-						chan.get(i).write(writeBuffer);
-					}
-
-				} catch (IOException e) {
-
-					//if write fails it means that the channel has been closed so we cannot write to it;
-					removeCrashedServer(i, chan);
-					status.remove(i);
-					i--;
-					System.out.println("Channel doesn't exist anymore. Active channels left:"+ chan.size());
-					continue;
+			try {
+				writeBuffer.flip();
+				while (writeBuffer.hasRemaining()) {
+					//if (chan.get(i).isConnectionPending() || !chan.get(i).isConnected())
+					//	chan.get(i).finishConnect();
+					chan.get(i).write(writeBuffer);
 				}
 
-				//this means that we sent the message to i and we are waiting for an ack from it
-				turns.set(i,false);
-				status.set(i, Status.NOTACK);
-
-		}
-
-
-			// Start receiving acks until quorum is reached, not activeServers/2 +1 but the quorum we save at beginning -1 (us)
-			// In case of ack from a previous query, ignore the message and send the new query
-			while (ackCounter < n.getSettings().getQuorum()-1) {
-
-				for (int i = 0; i < chan.size(); i++) {
-					readBuffer.clear();
-					String message = "";
-					try {
-
-						while (chan.get(i).read(readBuffer) > 0) {
-							// flip the buffer to start reading
-							readBuffer.flip();
-							message += Charset.defaultCharset().decode(
-									readBuffer);
-						}
-
-						if (message.equals(""))
-							continue;
-						//handling multiple messages on buffer
-						String[] tokens = message.split("&");
-						//decoding earlier message
-						reply = ED.decode(tokens[0]);
-					} catch (IOException e) {
-
-						//if write fails it means that the channel has been closed so we cannot write to it
-						removeCrashedServer(i, chan);
-						status.remove(i);
-						i--;
-						System.out.println("Channel doesn't exist anymore. Active channels left:"+ chan.size());
-						continue;
-					}
-
-					//updating FD
-					n.getFD().updateFDForNode(reply.getSenderId());
-
-
-					//handling older messages
-					if (status.get(i) == Status.NOTSENT) {
-
-						try {
-							System.out.println("Sending '"+ request.getRequestType()+ "' query to server (late) #" + reply.getSenderId());
-							writeBuffer.flip();
-							while (writeBuffer.hasRemaining()) {
-								chan.get(i).write(writeBuffer);
-							}
-
-						} catch (IOException e) {
-
-							//if write fails it means that the channel has been closed so we cannot write to it
-							removeCrashedServer(i, chan);
-							status.remove(i);
-							i--;
-							System.out.println("Channel doesn't exist anymore. Active channels left:"+ chan.size());
-							continue;
-						}
-						turns.set(i,false);
-						status.set(i, Status.NOTACK);
-					}
-					//if it was not an older message we can store it consider the ack and wait for another write
-					else {
-
-						values[i] = new Message(reply.getRequestType(),reply.getTag(),reply.getView(),reply.getSenderId());
-						status.set(i, Status.ACK);
-						turns.set(i,true);
-						ackCounter++;
-					}
-				}
+			} catch (IOException e) {
+				System.out.println("Cannot send message: " + m.getRequestType() + " to channel:" + chan.get(i).toString() + " in communicate");
+				i--;
+				continue;
 			}
 
+		}
 
-
-
-
-
-
-
-		return values;
 
 	}
 
 
+	//utilities******************************************************************************************************
 
-	//utilities
+	//switching state I update phase and next phase. If it is done I updated state as well
+	private void nextPhase() {
 
-	private static Tag findMaxTagFromMessages(Message[] values, Tag maxTag) {
+		switch (c_state) {
+			case WRITING:
+				//If I'm writing, the phase after query is writing
+				if (c_phase == Phase.QUERY) {
+					c_phase = c_phaseNext;
+					c_phaseNext = Phase.FINALIZE;
+				}
+				//If I'm writing, the phase after write is finalize
+				else if (c_phase == Phase.WRITE) {
+					c_phase = c_phaseNext;
+					c_phaseNext = Phase.ANSWERING;
+				}
+				//The successive phase and state of finalize is answering again, meaning I'm done with the writing procedure
+				else if (c_phase == Phase.FINALIZE) {
+					c_phase = c_phaseNext;
+					c_phaseNext = Phase.ANSWERING;
+					c_state = Node.State.ANSWERING;
+				}
+				break;
 
-		for (Message msg : values) {
+
+			case READING:
+				//If I'm reading, the phase after query is writing
+				if (c_phase == Phase.QUERY) {
+					c_phase = c_phaseNext;
+					c_phaseNext = Phase.WRITE;
+				}
+				//The successive phase and state of finalize in reading is answering again, meaning I'm done with the reading procedure after a gossip message
+				else if (c_phase == Phase.FINALIZE) {
+					c_phase = c_phaseNext;
+					c_phaseNext = Phase.ANSWERING;
+					c_state = Node.State.ANSWERING;
+				}
+				break;
+		}
+
+
+	}
+
+	//Answering again
+	private void abortWrite(){
+
+		c_state = Node.State.ANSWERING;
+		n.getCm().setState(Node.State.ANSWERING);
+		emptyMap(turnsInvalid);
+		emptyMap(turnsValid);
+
+	}
+
+	private void emptyMap(HashMap<Integer,Message> map) {
+
+		//removing each element in turnsValid
+		Set<Integer> s = map.keySet();
+		for (int i : s)
+			map.remove(i);
+
+	}
+
+
+	private int getRndId() {
+
+		Random rand = new Random();
+		return rand.nextInt(Integer.MAX_VALUE);
+
+	}
+
+
+	private Tag findMaxTagFromMessages(Tag local) {
+
+		Tag maxTag = local;
+		Collection<Message> replies = turnsValid.values();
+
+		for (Message msg : replies) {
 			if (msg != null) {
-				if (msg.getTag().compareTo(maxTag) > 0) {
+				if (msg.getTag().compareTo(local) > 0) {
 					maxTag = msg.getTag();
 				}
 			}
 		}
-
+		//maxTag now is the biggest Tag we know about so I set it as local Tag
+		//Is this right?
+		n.setLocalTag(maxTag);
 		return maxTag;
 	}
 
-	private boolean isValidResponse(Message[] values, Tag invalidTag){
+	private View findViewInMessages(Tag t){
 
-		int counter = 0;
-		for (Message msg : values) {
+		Collection<Message> replies = turnsValid.values();
+
+		for (Message msg : replies) {
 			if (msg != null) {
-				if (msg.getTag().compareTo(invalidTag) == 0) {
-					counter++;
-				}
+				if (msg.getTag().compareTo(t) == 0)
+					return msg.getView();
 			}
 		}
-
-		//if I received (how it should be) a quorum of answer (not counting me) the procedure is fine
-		if ((values.length - counter) >= n.getSettings().getQuorum()-1)
-			return true;
-		else {
-			System.out.println("Invalid pre-write, received" + counter + " invalid response(s)");
-			return false;
-		}
-
+		return new View("");
 
 	}
 
-	private void removeCrashedServer(int i, ArrayList<SocketChannel> serverChannels) {
-		try {
-			//removing from connection manager class
-			if (n.getCm().getServerChannels().contains(serverChannels.get(i))) {
-				n.getCm().getServerChannels().get(i).close();
-				n.getCm().getServerChannels().remove(serverChannels.get(i));
-			}
-			//removing from communicate
-			serverChannels.get(i).close();
-			serverChannels.remove(i);
-			turns.remove(i);
+	/* This function takes old Tag and decide if adding an element to counter list or updating label (just +1 in our case) */
+	private Tag generateNewTag(Tag lastTag) {
 
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
+		int id = n.getSettings().getNodeId();
+		//if counter is exhausted I start with a new label and set new counter to 0
+		if (lastTag.isExhausted())
+			return new Tag(id,lastTag.getLabel()+1,0);
 
+		//counter not exhausted so just adding the new value, first 2 lines should be useless
+		lastTag.setId(id);
+		lastTag.setLabel(lastTag.getLabel());
+		int newCVal = (int) ((lastTag.getCounters().getFirst().getCounter())+1);
+		lastTag.addCounter(new Counter(id,newCVal));
+
+
+
+		return lastTag;
 	}
 
 
@@ -367,6 +435,20 @@ public class Communicate {
 		return chan;
 	}
 
-	//must update size as well
-	public void setChan(ArrayList<SocketChannel> chan) {this.chan = chan;}
+	//Don't overwrite current channel list, just find the differences
+	public void setChan(ArrayList<SocketChannel> channels) {
+		//adding channel if not present
+		for (SocketChannel c : channels) {
+			if (!this.chan.contains(c))
+				this.chan.add(c);
+
+			}
+		//deleting channel if wrong
+		for (SocketChannel c : this.chan){
+			if (!channels.contains(c))
+				this.chan.remove(c);
+
+		}
+	}
 }
+
