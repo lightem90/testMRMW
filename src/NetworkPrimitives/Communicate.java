@@ -107,7 +107,7 @@ public class Communicate {
 			switch (c_phase) {
 				case QUERY:
 					//if I'm querying and the received message is a query response, I don't have a message stored from that id, and the identifiers are correct
-					if (tokens[2].equals("query") && !isStored && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) { // TODO: && rcv.rndID = rndID){
+					if (tokens[2].equals("query") && !isStored && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
 
 						System.out.println("Received expected message: " + req);
 						turnsValid.put(rcv.getSenderId(), rcv);

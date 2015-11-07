@@ -9,6 +9,7 @@ import com.robustMRMW.Node;
 import electMasterService.electMasterService;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
@@ -197,9 +198,11 @@ public class ConnectionManager {
                             Message m = ED.decode(msg);
                             System.out.println("Received " + m.getRequestType() + " from node #" + m.getSenderId());
                             //ignoring invalid messages (sender -1 is invalid)
-                            if (m.getSenderId() == -1)
+                            if (m.getSenderId() == -1) {
                                 //Discard invalid message
+                                System.out.println("Discarding invalid sender message");
                                 continue;
+                            }
 
                             //Should be a valid message: updating FD
                             n.getFD().updateFDForNode(m.getSenderId());
@@ -367,46 +370,64 @@ public class ConnectionManager {
         //and updating channels of communicate
         comm.setChan(serverChannels);
 
-        System.out.println("Client connected");
+        System.out.println("Client " +socketChannel.getRemoteAddress().toString()+  " connected");
     }
 
     /* method for establishing connection to other server */
     private void finishConnection(SelectionKey key) throws IOException {
 
         SocketChannel socketChannel = (SocketChannel) key.channel();
-        if (!serverChannels.contains(socketChannel)) {
+        try {
+
+            socketChannel.finishConnect();
+
+        }catch (ConnectException e){
+
+            //Raised only if the relative server is not up yet.
+            //Don't cancel the connection key just continue listening
+            //TODO: this doesn't work because the key gets in some ways ignored afterwards, we should re-register another one (smoking probably the cpu and the ram) or find a way to update it?
+            return;
+
+        }
+
             try {
-                // If the channel is not in our list of connected sockets, finish the connection.
-                // If the connection operation failed this will raise an IOException.
-                if (socketChannel.finishConnect())
-                    key.cancel();
+                if (!serverChannels.contains(socketChannel)) {
 
-                if (socketChannel.isConnected()) {
-                    serverChannels.add(socketChannel);
+                    // If the channel is not in our list of connected sockets, finish the connection.
+                    // If the connection operation failed this will raise an IOException.
 
-                    //update view as soon as I see an active connection
-                    for (Integer id : otherNodesAddress.keySet()) {
 
-                        //Yes no maybe? xD
-                        if (otherNodesAddress.get(id).equals(socketChannel.getRemoteAddress())) {
-                            System.out.println("Detected connection from:" + id + ", updating FD");
-                            n.getFD().updateFDForNode(id);
+                    if (socketChannel.isConnected()) {
+                        serverChannels.add(socketChannel);
+
+                        //update view as soon as I see an active connection
+                        for (Integer id : otherNodesAddress.keySet()) {
+
+                            //Yes no maybe? xD
+                            if (otherNodesAddress.get(id).equals(socketChannel.getRemoteAddress())) {
+                                System.out.println("Detected connection from:" + id + ", updating FD");
+                                n.getFD().updateFDForNode(id);
+                            }
                         }
                     }
+
+                    //TODO: What happens to old channels when I do setChan to older chans in communicate? For notw setChan updates the communicate chans checking the differences
+                    comm.setChan(serverChannels);
                 }
 
-                //TODO: What happens to old channels when I do setChan to older chans in communicate? For notw setChan updates the communicate chans checking the differences
-                comm.setChan(serverChannels);
 
-            } catch (IOException e) {
-
+        } catch (IOException e){
+                //need this to catch the case in which connect is called on a not alive server
+                //removes the channel if it is present
                 removeChannelFromList(socketChannel);
                 removeChannelFromComm(socketChannel);
+                //re-register for the next connection
+                key.cancel();
                 reRegisterKey(socketChannel);
                 return;
-            }
         }
     }
+
 
     /* Close all the channels of from this node to the sockets */
     public boolean stop() {
