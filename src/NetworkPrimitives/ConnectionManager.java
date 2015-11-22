@@ -423,8 +423,8 @@ public class ConnectionManager {
                     nodesToConnect.remove(socketChannel.getRemoteAddress());
                     //update view as soon as I see an active connection
 
-                    //TODO: should we add this line?
-                    //socketChannel.register(selector, SelectionKey.OP_READ);
+                    //TODO: should this be OP_WRITE?
+                    socketChannel.register(selector, SelectionKey.OP_READ);
 
                     for (Integer id : allNodesAddress.keySet()) {
 
