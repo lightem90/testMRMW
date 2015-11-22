@@ -45,7 +45,7 @@ public class Communicate {
 	public Communicate(Node currNode) {
 
 		n = currNode;
-		chan = currNode.getCm().getServerChannels();
+		chan = currNode.getCm().getConnectedServerChannels();
 		turnsValid = new HashMap<>();
 		turnsInvalid = new HashMap<>();
 		ED = new EncDec();

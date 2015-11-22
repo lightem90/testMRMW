@@ -45,7 +45,7 @@ public class electMasterService {
         view = localView;
         rep = cm.getReplica();
         mSet = currentSettings;
-        chan = cm.getServerChannels();
+        chan = cm.getConnectedServerChannels();
 
     }
 

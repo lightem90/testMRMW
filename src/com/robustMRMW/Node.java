@@ -55,19 +55,7 @@ public class Node {
         FD = new FailureDetector(ids,this);
 
         System.out.println("Setting up node in system with: " + settings.getNumberOfNodes() + " nodes, " + settings.getQuorum() + " quorum");
-
-        try {
-
-            cm.connect();
-
-        } catch (IOException e){
-
-            System.out.println("Error while connecting node");
-
-        }
-
-
-
+        cm.connect();
     }
 
 

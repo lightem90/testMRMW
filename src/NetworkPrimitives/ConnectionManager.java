@@ -41,9 +41,9 @@ public class ConnectionManager {
     // Class connection variables
     private SocketAddress hostAddress;
     private Selector selector;
-    private ArrayList<SocketChannel> serverChannels;
+    private ArrayList<SocketChannel> connectedServerChannels;
     private ArrayList<InetSocketAddress> nodesToConnect;
-    private Map<Integer,InetSocketAddress> otherNodesAddress;
+    private Map<Integer,InetSocketAddress> allNodesAddress;
 
     //Here I store the pair Tag - View that I use to answer
     private Map<Tag, View> rep;
@@ -57,7 +57,6 @@ public class ConnectionManager {
     private Node n;
     private EncDec ED;
 
-    //numeric identifier for each phase
     private Node.State state;
 
 
@@ -79,8 +78,8 @@ public class ConnectionManager {
     public ArrayList<Integer> init() {
 
         nodesToConnect = new ArrayList<>();
-        otherNodesAddress = new HashMap<>();
-        serverChannels = new ArrayList<>();
+        connectedServerChannels = new ArrayList<>();
+        allNodesAddress = new HashMap<>();
         replica = new HashMap<>();
         Selector socketSelector = null;
 
@@ -104,8 +103,8 @@ public class ConnectionManager {
 
                 //filling an array with all the ids to pass it to FD and a map with id-address that may be useful later on
                 ids.add(Integer.parseInt(tokens[1]));
-                otherNodesAddress.put(Integer.parseInt(tokens[1]), new InetSocketAddress(tokens[0],Integer.parseInt(tokens[1])));
-                //otherNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1]))); //local
+                allNodesAddress.put(Integer.parseInt(tokens[1]), new InetSocketAddress(tokens[0], Integer.parseInt(tokens[1])));
+                //allNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1]))); //local
 
                 //String[] portTokens = tokens[1].split(":"); //local
                 //ignoring smaller ids
@@ -149,16 +148,25 @@ public class ConnectionManager {
     }
 
     /* Connecting to id-bigger nodes */
-    public void connect() throws IOException {
+    public void connect(){
 
+        /* Register all the not yet connected nodes to the selector */
         SelectionKey key = null;
+        SocketChannel channelToAdd = null;
         for (SocketAddress toAdd : nodesToConnect)
         {
-            SocketChannel channelToAdd = SocketChannel.open();
-            channelToAdd.configureBlocking(false);
-            channelToAdd.connect(toAdd);
-            key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
+            try {
 
+                channelToAdd = SocketChannel.open();
+                channelToAdd.configureBlocking(false);
+                channelToAdd.connect(toAdd);
+                key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
+
+            }catch (IOException e)
+            {
+                System.out.println("Cannot open channel with address: " + channelToAdd.toString());
+                continue;
+            }
         }
     }
 
@@ -166,8 +174,9 @@ public class ConnectionManager {
     /* Servicing method, starts one thread for servicing requests and one for user input  */
     public void run() {
 
-            try {
+        /* Everytime I register the not yet connected nodes to the selector */
 
+            try {
                 // listening for connections, initializes the selector with all socket ready for I/O operations
                 selector.select();
 
@@ -179,11 +188,9 @@ public class ConnectionManager {
                     SelectionKey key = selectedKeys.next();
                     selectedKeys.remove();
 
-                    if (!key.isValid()) {
-                        // if a channel is closed we skip it
+                    if (!key.isValid()){
                         continue;
                     }
-
 
                     if (key.isAcceptable()) {
                         accept(key);
@@ -263,14 +270,13 @@ public class ConnectionManager {
 
                     } else if (key.isConnectable())
                         finishConnection(key);
-
                     }
 
 
             } catch (Exception e) {
+                System.out.println("Server crashed in loop");
                 e.printStackTrace();
             }
-
 
     }
 
@@ -365,10 +371,10 @@ public class ConnectionManager {
         SocketChannel socketChannel = serverSocketChannel.accept();
         socketChannel.configureBlocking(false);
         socketChannel.register(selector, SelectionKey.OP_READ);
-        //add the accepted socket to the list of active servers
-        serverChannels.add(socketChannel);
+        //add the accepted socket to the list of active servers TODO: should we update FD as well? We update it if the connect succed so maybe we should update it here as well
+        connectedServerChannels.add(socketChannel);
         //and updating channels of communicate
-        comm.setChan(serverChannels);
+        comm.setChan(connectedServerChannels);
 
         System.out.println("Client " +socketChannel.getRemoteAddress().toString()+  " connected");
     }
@@ -377,54 +383,81 @@ public class ConnectionManager {
     private void finishConnection(SelectionKey key) throws IOException {
 
         SocketChannel socketChannel = (SocketChannel) key.channel();
+        SocketAddress remote = socketChannel.getRemoteAddress();
         try {
+
+            /* From the documentation of finishConnect()
+            Finishes the process of connecting a socket channel.
+            A non-blocking connection operation is initiated by placing a socket channel in non-blocking mode and then invoking its connect method.
+            Once the connection is established, or the attempt has failed, the socket channel will become connectable and this method may be invoked to complete the connection sequence.
+            If the connection operation failed then invoking this method will cause an appropriate IOException to be thrown.
+            If this channel is already connected then this method will not block and will immediately return true.
+            If this channel is in non-blocking mode then this method will return false if the connection process is not yet complete.
+            If this channel is in blocking mode then this method will block until the connection either completes or fails, and will always either return true or throw a checked exception describing the failure.
+            This method may be invoked at any time. If a read or write operation upon this channel is invoked while an invocation of this method is in progress then that operation will first block until this invocation is complete.
+            If a connection attempt fails, that is, if an invocation of this method throws a checked exception, then the channel will be closed.
+            */
 
             socketChannel.finishConnect();
 
+
         }catch (ConnectException e){
-
-            //Raised only if the relative server is not up yet.
-            //Don't cancel the connection key just continue listening
-            //TODO: this doesn't work because the key gets in some ways ignored afterwards, we should re-register another one (smoking probably the cpu and the ram) or find a way to update it?
+            //If I get this exception it means that the channel doesn't exist (the client is not up)
+            reRegisterKey(remote);
             return;
-
         }
 
-            try {
-                if (!serverChannels.contains(socketChannel)) {
+        /* If I'm here finishConnect didn't throw an exception so the channel should be up (and connectable/connected) */
 
-                    // If the channel is not in our list of connected sockets, finish the connection.
-                    // If the connection operation failed this will raise an IOException.
+        try {
+            if (!connectedServerChannels.contains(socketChannel)) {
 
+                // If the channel is not in our list of connected sockets, finish the connection.
+                // If the connection operation failed this will raise an IOException.
 
-                    if (socketChannel.isConnected()) {
-                        serverChannels.add(socketChannel);
+                /* Here I'm sure the channel is connected so I can add it to the list of connected sockets */
+                if (socketChannel.isConnected()) {
 
-                        //update view as soon as I see an active connection
-                        for (Integer id : otherNodesAddress.keySet()) {
+                    connectedServerChannels.add(socketChannel);
+                    //Removing it from the list of not connected nodes
+                    nodesToConnect.remove(socketChannel.getRemoteAddress());
+                    //update view as soon as I see an active connection
 
-                            //Yes no maybe? xD
-                            if (otherNodesAddress.get(id).equals(socketChannel.getRemoteAddress())) {
-                                System.out.println("Detected connection from:" + id + ", updating FD");
-                                n.getFD().updateFDForNode(id);
-                            }
+                    //TODO: should we add this line?
+                    //socketChannel.register(selector, SelectionKey.OP_READ);
+
+                    for (Integer id : allNodesAddress.keySet()) {
+
+                        //Yes no maybe? xD
+                        if (allNodesAddress.get(id).equals(socketChannel.getRemoteAddress())) {
+                            System.out.println("Detected connection from:" + id + ", updating FD");
+                            //TODO: I should update the FD upon a message arrival tho
+                            n.getFD().updateFDForNode(id);
+                            //Node found. exiting
+                            break;
                         }
                     }
-
-                    //TODO: What happens to old channels when I do setChan to older chans in communicate? For notw setChan updates the communicate chans checking the differences
-                    comm.setChan(serverChannels);
                 }
 
-
-        } catch (IOException e){
-                //need this to catch the case in which connect is called on a not alive server
-                //removes the channel if it is present
-                removeChannelFromList(socketChannel);
-                removeChannelFromComm(socketChannel);
-                //re-register for the next connection
-                key.cancel();
-                reRegisterKey(socketChannel);
+                //TODO: What happens to old channels when I do setChan to older chans in communicate? For now setChan updates the communicate channels checking the differences
+                comm.setChan(connectedServerChannels);
+            }
+            else
+                //I already know this node is connected so I just return
                 return;
+
+
+    } catch (IOException e){
+            //need this to catch the case in which connect is called on a not alive server
+            //removes the channel if it is present
+            //re-register for the next connection
+            /*  Don't need anything of this, to re-register a channel is sufficient to add it to the nodesToConnect list.
+                If a read/write fails we add the channel who failed to that list
+            removeChannelFromList(socketChannel);
+            removeChannelFromComm(socketChannel);
+            reRegisterKey(socketChannel);*/
+            System.out.println("Finish connection crashed");
+            return;
         }
     }
 
@@ -436,7 +469,7 @@ public class ConnectionManager {
         if (selector != null) {
             try {
                 selector.close();
-                for (SocketChannel s : serverChannels) {
+                for (SocketChannel s : connectedServerChannels) {
                     s.socket().close();
                     s.close();
                 }
@@ -550,14 +583,14 @@ public class ConnectionManager {
     /* writes message into buffer */
     private void sendMessage(SocketChannel s, Message m) {
 
-        String remoteAdd=null;
+        SocketAddress remoteAdd=null;
         try {
-        remoteAdd =  s.getRemoteAddress().toString();
-        System.out.println("Trying to send: " + m.getRequestType() + " to " +remoteAdd);
+        remoteAdd =  s.getRemoteAddress();
+        System.out.println("Trying to send: " + m.getRequestType() + " to " +remoteAdd.toString());
 
         if (s.isConnected()){
 
-            System.out.println("Sending: " + m.getRequestType() + " to " + remoteAdd);
+            System.out.println("Sending: " + m.getRequestType() + " to " + remoteAdd.toString());
             writeBuffer.clear();
             writeBuffer.put(ED.encode(m).getBytes());
             writeBuffer.flip();
@@ -569,23 +602,33 @@ public class ConnectionManager {
             }
 
         }  catch (IOException e) {
+            try {
+                s.close();
+            } catch (IOException e1) {
+                System.out.println("Cannot close channel in failed write");
+                e1.printStackTrace();
+            }
             System.out.println("Error in writing message to: "+remoteAdd);
-            reRegisterKey(s);
-            serverChannels.remove(s);
-            comm.setChan(serverChannels);
+            reRegisterKey(remoteAdd);
+            connectedServerChannels.remove(s);
+            comm.setChan(connectedServerChannels);
         }
 
 
     }
-
+    /* Reads all the message in the buffer, if an exception is thrown it proceed to re-register the key or just exits */
     private String[] readMessages(SelectionKey key) {
 
         String message = "";
-        try{
+        SocketAddress remote = null;
 
+        SocketChannel channel = (SocketChannel) key.channel();
+
+        try{
+            remote = channel.getRemoteAddress();
             readBuffer.clear();
 
-            SocketChannel channel = (SocketChannel) key.channel();
+
             while (channel.read(readBuffer) > 0) {
                 // flip the buffer to start reading
                 readBuffer.flip();
@@ -593,11 +636,16 @@ public class ConnectionManager {
             }
 
         } catch (IOException e) {
+            try {
+                channel.close();
+            } catch (IOException e1) {
+                System.out.println("Cannot close channel in failed read");
+                e1.printStackTrace();
+            }
             System.out.println("Server or reader/writer crashed in read");
-            reRegisterKey((SocketChannel)key.channel());
-            key.cancel();
-            serverChannels.remove(key.channel());
-            comm.setChan(serverChannels);
+            reRegisterKey(remote);
+            connectedServerChannels.remove(key.channel());
+            comm.setChan(connectedServerChannels);
         }
 
         return message.split("&");
@@ -607,8 +655,8 @@ public class ConnectionManager {
     //Da usare? non credo
     void removeChannelFromList(SocketChannel toRemove){
 
-        if (serverChannels.contains(toRemove))
-            serverChannels.remove(toRemove);
+        if (connectedServerChannels.contains(toRemove))
+            connectedServerChannels.remove(toRemove);
 
     }
 
@@ -618,14 +666,39 @@ public class ConnectionManager {
             comm.getChan().remove(toRemove);
     }
 
-    /* At the moment we re-register a channel only if it crashes while reading */
-    void reRegisterKey(SocketChannel s){
+    /* This function takes the remote address of the closed/crashed/invalid channel and re-register it (if the id is greater than ours) */
+    void reRegisterKey(SocketAddress s){
+
+        //System.out.println("Channel was closed... Trying to reconnect->" + s.toString());
+        Set<Integer> allID = allNodesAddress.keySet();
+        for (int id : allID)
+        {
+            SocketAddress current = allNodesAddress.get(id);
+            if (current == s) {
+                /* If the Id of the crashed node is greater than me I proceed with re-registering */
+                if (id > n.getSettings().getNodeId()) {
+                    System.out.println(id + " crashed. Registering key...");
+                    break;
+                }
+                else
+                /* Otherwise I has a smaller ID, so when it reconnects I will accept it */
+                {
+                    System.out.println(id + " crashed. Continue...");
+                    return;
+                }
+            }
+
+        }
+
         try {
-        SelectionKey key = null;
-        if (s.isOpen())
-            key = s.register(selector, SelectionKey.OP_CONNECT);
-        } catch (ClosedChannelException e) {
-            System.out.println("Cannot re-register key/channel");
+
+            SocketChannel newChannel = SocketChannel.open();
+            newChannel.configureBlocking(false);
+            newChannel.connect(s);
+            SelectionKey key = newChannel.register(selector, SelectionKey.OP_CONNECT);
+
+        } catch (IOException e) {
+            System.out.println("Cannot re-register channel, cannot open a new one");
             e.printStackTrace();
         }
 
@@ -635,12 +708,12 @@ public class ConnectionManager {
 
 
     /* Getters and Setters */
-    public ArrayList<SocketChannel> getServerChannels() {
-        return serverChannels;
+    public ArrayList<SocketChannel> getConnectedServerChannels() {
+        return connectedServerChannels;
     }
 
-    public void setServerChannels(ArrayList<SocketChannel> serverChannels) {
-        this.serverChannels = serverChannels;
+    public void setConnectedServerChannels(ArrayList<SocketChannel> connectedServerChannels) {
+        this.connectedServerChannels = connectedServerChannels;
     }
 
 
