@@ -286,7 +286,11 @@ public class Communicate {
 		System.out.println("Sending '" + m.getRequestType() + "' to everyone");
 		for (int i = 0; i < chan.size(); i++) {
 			try {
+
+				writeBuffer.clear();
+				writeBuffer.put(ED.encode(m).getBytes());
 				writeBuffer.flip();
+
 				while (writeBuffer.hasRemaining()) {
 					//if (chan.get(i).isConnectionPending() || !chan.get(i).isConnected())
 					//	chan.get(i).finishConnect();

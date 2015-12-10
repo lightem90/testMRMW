@@ -268,12 +268,14 @@ public class ConnectionManager {
                         }
 
 
-                    } else if (key.isConnectable())
+                    }
+                    else if (key.isConnectable())
                         finishConnection(key);
+
                     else if (key.isWritable()){
                         System.out.println("print this is the key is writable (OP_WRITE set)");
-                        write(new View("porca madonna"));
-                    }
+                        write(new View("testView"));
+                        }
                     }
 
 
