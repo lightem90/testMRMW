@@ -3,53 +3,30 @@ package Structures;
 import java.util.LinkedList;
 
 /* Class used to identify an operation in the system, in this way we can implement a multi reader multi writer, take a look in the paper for a deeper explanation */
-public class Tag implements Comparable<Tag>{
+public class Tag implements Comparable<Tag> {
 
 	//we can't send an infinite counter list so we limit the size of it
 	private static int MAXIMUM_LIST_SIZE = 10;
 
-	private int id;
-	private int label; //not really correct
+	private Epoch epoch;
 	private LinkedList<Counter> counters;
 
 
 	//init a new Tag with an empty counter
-	public Tag(int id, int label, int firstCounterValue) {
+	public Tag(Epoch ep, int firstCounterValue) {
 
-		this.id = id;
-		this.label = label;
+		this.epoch = ep;
 		this.counters = new LinkedList<>();
 		//initializing with un-valid counter to avoid null pointer exc.
-		counters.add(new Counter(id,firstCounterValue));
+		counters.add(new Counter(ep.getId(), firstCounterValue));
 
 
 	}
 
-
-	//compares two tag returning the highest one
-	public Tag greatestTag(Tag t1, Tag t2) {
-
-		//checking order: label -> counter -> id
-		if (t1.label > t2.label)
-			return t1;
-
-		if (t1.label == t2.label) {
-			Counter c1 = t1.getCounters().getFirst();
-			Counter c2 = t2.getCounters().getFirst();
-
-			//checking counter
-			if (c1.getCounter() > c2.getCounter())
-				return t1;
-
-			if (c1.getCounter() == c2.getCounter())
-				//returns t1 or t2 basing on id
-				return c1.getId() > c2.getId() ? t1 : t2;
-
-		}
-		
-		//means t2 > t1 because all other cases are handled
-		return t2;
-
+	public Tag(int id, int epochNum, int firstCounterValue)	{
+		this.epoch = new Epoch(id,epochNum);
+		this.counters = new LinkedList<>();
+		counters.add(new Counter(id,firstCounterValue));
 	}
 
 	//TODO: How are we 100% SURE that the first is ALWAYS the bigger one?
@@ -75,7 +52,7 @@ public class Tag implements Comparable<Tag>{
 	//comparing two tags means comparing: labels -> firstCounterElement -> ids (breaking simmetry)
 	@Override
 	public int compareTo(Tag anotherTag) {
-		if(label == anotherTag.getLabel()) {
+		if(epoch == anotherTag.getEpoch()) {
 
 			//labels equal so I proceed comparing counter
 			Counter t = anotherTag.getCounters().getFirst();
@@ -89,7 +66,7 @@ public class Tag implements Comparable<Tag>{
 
 		}
 		//labels are different
-		return Integer.compare(label,anotherTag.getLabel());
+		return Integer.compare(epoch.getEpoch(),anotherTag.getEpoch().getEpoch());
 	}
 	@Override
 	public int hashCode() {
@@ -104,25 +81,19 @@ public class Tag implements Comparable<Tag>{
 
 
 	/* Getters and Setters */
-	public int getId() {
-		return id;
-	}
 
-	public void setId(int id) {
-		this.id = id;
-	}
-
-	public int getLabel() {
-		return label;
-	}
-
-	public void setLabel(int label) {
-		this.label = label;
-	}
 
 	public LinkedList<Counter> getCounters() {return counters;}
 
 	public void setCounters(LinkedList<Counter> counters) {this.counters = counters;}
+
+	public Epoch getEpoch() {
+		return epoch;
+	}
+
+	public void setEpoch(Epoch epoch) {
+		this.epoch = epoch;
+	}
 
 
 }

@@ -2,6 +2,7 @@ package com.robustMRMW;
 
 import NetworkPrimitives.ConnectionManager;
 import NetworkPrimitives.Settings;
+import Structures.Epoch;
 import Structures.Tag;
 import Structures.View;
 
@@ -36,7 +37,7 @@ public class Node {
 
         this.settings = settings;
         //initializing initial tag with all zeroes and my id, localView at start it is just me active
-        localTag = new Tag(this.settings.getNodeId(),0,0);
+        localTag = new Tag(new Epoch(this.getSettings().getNodeId(),0),0);
         localView = new View(String.valueOf(this.settings.getNodeId()));
         localView.setArrayFromValueString();
         cm = new ConnectionManager(this);
@@ -102,7 +103,7 @@ public class Node {
     }
 
     public Tag getLocalTag() {
-        return (localTag==null ? new Tag(-1,-1,-1) : localTag);
+        return (localTag==null ? new Tag(new Epoch(-1,-1),-1) : localTag);
     }
 
     public void setLocalTag(Tag localTag) {

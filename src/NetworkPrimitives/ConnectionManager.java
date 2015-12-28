@@ -1,10 +1,7 @@
 package NetworkPrimitives;
 
 import EncoderDecoder.EncDec;
-import Structures.Counter;
-import Structures.Message;
-import Structures.Tag;
-import Structures.View;
+import Structures.*;
 import com.robustMRMW.Node;
 import electMasterService.electMasterService;
 
@@ -31,6 +28,7 @@ public class ConnectionManager {
     //Class constants
     private final static String ADDRESS_PATH = "address.txt";
     private final static int PORT = 3000;
+    private final static int INVALID = -1;
 
 
     // Class buffer
@@ -87,39 +85,15 @@ public class ConnectionManager {
         ArrayList<Integer> ids = new ArrayList<>();
 
         try {
-            int i;
             // read addresses from file
             Path filePath = Paths.get(ADDRESS_PATH);
             List<String> lines = Files.readAllLines(filePath);
 
-            // for each line if it's not my port I'll add the address to the array of addresses
-            for (i = 0; i < lines.size(); i++) {
-
-                //EMULAB strings are being removed since we won't use it anymore
-                String line = lines.get(i);
-                System.out.println(line);
-                //position 0 address, 1 port/id
-                String[] tokens = line.split(":");
-
-                //filling an array with all the ids to pass it to FD and a map with id-address that may be useful later on
-                ids.add(Integer.parseInt(tokens[1]));
-                allNodesAddress.put(Integer.parseInt(tokens[1]), new InetSocketAddress(tokens[0], Integer.parseInt(tokens[1])));
-                //allNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1]))); //local
-
-                //String[] portTokens = tokens[1].split(":"); //local
-                //ignoring smaller ids
-                if (Integer.parseInt(tokens[1]) < n.getSettings().getNodeId())
-                    continue;
-
-                if (Integer.parseInt(tokens[1]) == n.getSettings().getNodeId())
-                    hostAddress = new InetSocketAddress(tokens[0],n.getSettings().getNodeId());
-                   //hostAddress = new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
-                else {
-                    //id is bigger than my id
-                    nodesToConnect.add(new InetSocketAddress(tokens[0],Integer.parseInt(tokens[1])));
-                   //nodesToConnect.add(new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
-                }
+            if (!readAddressesFromFile(lines,ids)) {
+                System.out.println("Error in reading addresses");
+                return new ArrayList<>();
             }
+
 
             try {
 
@@ -140,6 +114,7 @@ public class ConnectionManager {
             }
 
         } catch (IOException e) {
+            System.out.println("Error in opening address file");
             e.printStackTrace();
         }
 
@@ -205,7 +180,7 @@ public class ConnectionManager {
                             Message m = ED.decode(msg);
                             System.out.println("Received " + m.getRequestType() + " from node #" + m.getSenderId());
                             //ignoring invalid messages (sender -1 is invalid)
-                            if (m.getSenderId() == -1) {
+                            if (m.getSenderId() == INVALID) {
                                 //Discard invalid message
                                 System.out.println("Discarding invalid sender message");
                                 continue;
@@ -308,7 +283,7 @@ public class ConnectionManager {
                     Tag newTag = receivedMessage.getTag();
                     if (maxTag.compareTo(newTag) >= 0) {
                         System.out.println("Received tag smaller than local max tag");
-                        sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", new Tag(-1,-1,-1), new View (""), n.getSettings().getNodeId()));
+                        sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", new Tag(new Epoch(INVALID,INVALID),INVALID), new View (""), n.getSettings().getNodeId()));
                         break;
                     }
                     else {
@@ -316,7 +291,7 @@ public class ConnectionManager {
                         //I think this is wrong, if a prewrite is received it shouldn't become localView now. It should wait the finalize message and until that should be stored in rep
                         //n.setLocalTag(newTag);
                         //n.setLocalView(receivedMessage.getView());
-                        n.getLocalView().setStatus(View.Status.PRE);
+                        n.getLocalView().setLabel(View.Label.PRE);
                         rep.put(receivedMessage.getTag(), receivedMessage.getView());
                         //Responding with receivedTag. Using the attribute from message instead of newTag for readability
                         sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", receivedMessage.getTag(), receivedMessage.getView(), n.getSettings().getNodeId()));
@@ -329,7 +304,7 @@ public class ConnectionManager {
                     Tag bestTag = receivedMessage.getTag();
 
                     if (rep.containsKey(bestTag)) {
-                        rep.get(bestTag).setStatus(View.Status.FIN);
+                        rep.get(bestTag).setLabel(View.Label.FIN);
                         //View is finalized I can use that as local now
                         n.setLocalTag(bestTag);
                         n.setLocalView(rep.get(bestTag));
@@ -339,7 +314,7 @@ public class ConnectionManager {
                     } else {
 
                         View tmp = new View("");
-                        tmp.setStatus(View.Status.FIN);
+                        tmp.setLabel(View.Label.FIN);
                         rep.put(bestTag, tmp);
                         sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", bestTag, tmp, n.getSettings().getNodeId()));
                     }
@@ -376,7 +351,8 @@ public class ConnectionManager {
         ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
         SocketChannel socketChannel = serverSocketChannel.accept();
         socketChannel.configureBlocking(false);
-        socketChannel.register(selector, SelectionKey.OP_READ);
+        //I changed it to op_write from OP_READ because the paper states that POSSIBLY the node with higher ID should write first. If I'm accepting a connection it means my ID is higher
+        socketChannel.register(selector, SelectionKey.OP_WRITE);
         //add the accepted socket to the list of active servers TODO: should we update FD as well? We update it if the connect succed so maybe we should update it here as well
         connectedServerChannels.add(socketChannel);
         //and updating channels of communicate
@@ -429,7 +405,7 @@ public class ConnectionManager {
                     nodesToConnect.remove(socketChannel.getRemoteAddress());
                     //update view as soon as I see an active connection
 
-                    //TODO: should this be OP_WRITE?
+                    //TODO: should this be OP_WRITE? NO! BECAUSE THE NODE WITH HIGHER ID SHOULD WRITE FIRST
                     socketChannel.register(selector, SelectionKey.OP_READ);
 
                     for (Integer id : allNodesAddress.keySet()) {
@@ -488,6 +464,42 @@ public class ConnectionManager {
 
     }
 
+    /* Reads the nodes address and id from file in the form -> 127.0.0.1:5000 TODO: CHANGE THIS METHOD IF THE FILE CHANGES */
+    private boolean readAddressesFromFile(List<String> linesToParse, ArrayList<Integer> idNodesArray){
+
+        // for each line if it's not my port I'll add the address to the array of addresses
+        for (int i = 0; i < linesToParse.size(); i++) {
+
+            //EMULAB strings are being removed since we won't use it anymore
+            String line = linesToParse.get(i);
+            System.out.println(line);
+            //position 0 address, 1 port/id
+            String[] tokens = line.split(":");
+
+            //filling an array with all the ids to pass it to FD and a map with id-address that may be useful later on
+            idNodesArray.add(Integer.parseInt(tokens[1]));
+            allNodesAddress.put(Integer.parseInt(tokens[1]), new InetSocketAddress(tokens[0], Integer.parseInt(tokens[1])));
+            //allNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1]))); //local
+
+            //String[] portTokens = tokens[1].split(":"); //local
+            //ignoring smaller ids, they will connect to my address and will do accept on them
+            if (Integer.parseInt(tokens[1]) < n.getSettings().getNodeId())
+                continue;
+
+            //this is me
+            if (Integer.parseInt(tokens[1]) == n.getSettings().getNodeId())
+                hostAddress = new InetSocketAddress(tokens[0],n.getSettings().getNodeId());
+                //hostAddress = new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
+            else {
+                //id is bigger than my id, so I have to register as waiting to connect to them
+                nodesToConnect.add(new InetSocketAddress(tokens[0],Integer.parseInt(tokens[1])));
+                //nodesToConnect.add(new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
+            }
+        }
+        return true;
+
+    }
+
 
 
     //Algorithm**************************************************************************************************************************
@@ -499,7 +511,7 @@ public class ConnectionManager {
         int leader = election.electMaster();
         n.getFD().setLeader_id(leader);
         System.out.println("Master elected with id: "+ n.getFD().getLeader_id());
-            if (leader == -1){
+            if (leader == INVALID){
                 System.out.println("No suitable leader, querying...");
                 write(n.getProposedView());
                 //read();
@@ -548,13 +560,13 @@ public class ConnectionManager {
 
         //the minimum tag that we have is the localTag (if it is a valid view, otherwise it is the smallest possible tag)
         Tag maxTag;
-        if (n.getLocalView().getStatus() == View.Status.FIN)
+        if (n.getLocalView().getLabel() == View.Label.FIN)
             maxTag = n.getLocalTag();
-        else maxTag = new Tag(0,0,0);
+        else maxTag = new Tag(new Epoch(0,0),0);
 
         Set<Tag> tags = map.keySet();
         for (Tag tag : tags) {
-            if (map.get(tag).getStatus() == View.Status.PRE)
+            if (map.get(tag).getLabel() == View.Label.PRE)
                 continue;
             if (tag.compareTo(maxTag) > 0) {
                 maxTag = tag;
@@ -570,17 +582,17 @@ public class ConnectionManager {
     private Tag generateNewTag(Tag lastTag) {
 
         int id = n.getSettings().getNodeId();
+        Epoch ep = lastTag.getEpoch();
         //if counter is exhausted I start with a new label and set new counter to 0
-        if (lastTag.isExhausted())
-            return new Tag(id,lastTag.getLabel()+1,0);
+        if (lastTag.isExhausted()) {
+            ep.incrementEpoch();
+            return new Tag(ep, 0);
+        }
 
         //counter not exhausted so just adding the new value, first 2 lines should be useless
-        lastTag.setId(id);
-        lastTag.setLabel(lastTag.getLabel());
+        lastTag.setEpoch(ep);
         int newCVal = (int) ((lastTag.getCounters().getFirst().getCounter())+1);
         lastTag.addCounter(new Counter(id,newCVal));
-
-
 
         return lastTag;
     }

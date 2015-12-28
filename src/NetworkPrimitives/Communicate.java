@@ -1,9 +1,6 @@
 package NetworkPrimitives;
 
-import Structures.Counter;
-import Structures.Message;
-import Structures.Tag;
-import Structures.View;
+import Structures.*;
 import com.robustMRMW.Node;
 import EncoderDecoder.EncDec;
 
@@ -139,7 +136,7 @@ public class Communicate {
 					//TODO: 2 alternatives: abort writing if prewrite fails after a fixed amout of time or counting invalid answers like this case
 					//if I'm querying and the received message is a query response and I don't have a message stored from that id
 					if (tokens[2].equals("pre-write") && !isStored && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
-						if (!(rcv.getTag().getLabel() == -1) && !(rcv.getTag().getId() == -1))
+						if (!(rcv.getTag().getEpoch().getEpoch() == -1) && !(rcv.getTag().getEpoch().getId() == -1))
 							//if it is a legit answer
 							turnsValid.put(rcv.getSenderId(), rcv);
 						else
@@ -177,7 +174,7 @@ public class Communicate {
 						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
 
 							//I'm done writing
-							toWrite.setStatus(View.Status.FIN);
+							toWrite.setLabel(View.Label.FIN);
 							n.setLocalTag(rcv.getTag());
 							n.setLocalView(toWrite);
 
@@ -417,13 +414,15 @@ public class Communicate {
 	private Tag generateNewTag(Tag lastTag) {
 
 		int id = n.getSettings().getNodeId();
+		Epoch ep = lastTag.getEpoch();
 		//if counter is exhausted I start with a new label and set new counter to 0
-		if (lastTag.isExhausted())
-			return new Tag(id,lastTag.getLabel()+1,0);
+		if (lastTag.isExhausted()) {
+			ep.incrementEpoch();
+			return new Tag(ep, 0);
+		}
 
 		//counter not exhausted so just adding the new value, first 2 lines should be useless
-		lastTag.setId(id);
-		lastTag.setLabel(lastTag.getLabel());
+		lastTag.setEpoch(ep);
 		int newCVal = (int) ((lastTag.getCounters().getFirst().getCounter())+1);
 		lastTag.addCounter(new Counter(id,newCVal));
 

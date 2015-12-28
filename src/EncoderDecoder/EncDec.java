@@ -1,9 +1,6 @@
 package EncoderDecoder;
 
-import Structures.Counter;
-import Structures.Message;
-import Structures.Tag;
-import Structures.View;
+import Structures.*;
 
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -31,7 +28,7 @@ public class EncDec {
 		//setting invalid return character (so we can check if the method didn't work)
 		String reqT = String.valueOf(INVALID);
 		View tmpV = new View(String.valueOf(INVALID));
-		Tag tmpT = new Tag(INVALID,INVALID,INVALID);
+		Tag tmpT = new Tag(new Epoch(INVALID,INVALID),INVALID);
 		int tmpS = INVALID;
 
 
@@ -44,8 +41,7 @@ public class EncDec {
 			tmpS = Integer.parseInt(tokens[3].replace(END_STRING,""));
 			String tag_tokens[] = tokens[2].split(TAG_SEPARATOR);
 			if (tag_tokens.length == 4){
-				tmpT.setId(Integer.parseInt(tag_tokens[0]));
-				tmpT.setLabel(Integer.parseInt(tag_tokens[1]));
+				tmpT.setEpoch(new Epoch(Integer.parseInt(tag_tokens[0]),(Integer.parseInt(tag_tokens[1]))));
 				Counter tmp = new Counter(Integer.parseInt(tag_tokens[2]), Integer.parseInt(tag_tokens[3]));
 				//not adding counter if is the invalid one
 				if (!(tmp.getCounter() == -1) && !(tmp.getId() == -1))
@@ -77,7 +73,7 @@ public class EncDec {
 		//insert invalid counter if tag is empty (will be removed in decoding phase
 		if (tmpT.getCounters() == null || tmpT.getCounters().size() == 0) {
 			LinkedList<Counter> tmp = new LinkedList<Counter>();
-			tmp.add(new Counter(-1, -1));
+			tmp.add(new Counter(INVALID, INVALID));
 			tmpT.setCounters(tmp);
 		}
 
@@ -91,7 +87,7 @@ public class EncDec {
 		sb.append(SEPARATOR);
 		sb.append(tmpV.getValue());
 		sb.append(SEPARATOR);
-		sb.append(tmpT.getId() + TAG_SEPARATOR + tmpT.getLabel() + TAG_SEPARATOR + tmpT.getCounters().get(0).getId() + TAG_SEPARATOR + tmpT.getCounters().get(0).getCounter());
+		sb.append(tmpT.getEpoch().getId() + TAG_SEPARATOR + tmpT.getEpoch().getEpoch() + TAG_SEPARATOR + tmpT.getCounters().get(0).getId() + TAG_SEPARATOR + tmpT.getCounters().get(0).getCounter());
 		sb.append(SEPARATOR);
 		sb.append(tmpS);
 		sb.append(END_STRING);

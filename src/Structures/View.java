@@ -10,22 +10,27 @@ public class View {
 
 	private static final String ID_SEPARATOR = "/";
 
-	public enum Status {
-		FIN, PRE;
+	public enum Label {
+		FIN, PRE
 	}
+	public enum Status {
+		MULTICAST, PROPOSE,INSTALL
+	}
+
 	private String value;
-	private Status status ;
+	private Label label;
+	private Status status;
 	//this is te content of the value string (a list of id's) in this way we can compare it faster maybe instead of just the string
 	private ArrayList<Integer> idArray;
 
 
 	public View(String value){
 		this.value = value;
-		this.status = Status.FIN;
+		this.label = Label.FIN;
 	}
 
 
-	//AD-HOC constructor to update view from Failure Detector, it fills the arrayList, the string to be send and the status variable
+	//AD-HOC constructor to update view from Failure Detector, it fills the arrayList, the string to be send and the label variable
 	//We need this to update the local node view every time a node comes online/offline
 	public View (Set s){
 
@@ -43,7 +48,7 @@ public class View {
 
 		}
 
-		status = Status.FIN;
+		label = Label.FIN;
 		value = sb.toString();
 
 	}
@@ -79,6 +84,7 @@ public class View {
 	}
 
 
+	/* Getters and Setters */
 	public String getValue() {
 		return value;
 	}
@@ -87,12 +93,12 @@ public class View {
 		this.value = value;
 	}
 
-	public Status getStatus() {
-		return status;
+	public Label getLabel() {
+		return label;
 	}
 
-	public void setStatus(Status status) {
-		this.status = status;
+	public void setLabel(Label label) {
+		this.label = label;
 	}
 
 	public ArrayList<Integer> getIdArray() {
@@ -101,5 +107,14 @@ public class View {
 
 	public void setIdArray(ArrayList<Integer> idArray) {
 		this.idArray = idArray;
+	}
+
+
+	public Status getStatus() {
+		return status;
+	}
+
+	public void setStatus(Status status) {
+		this.status = status;
 	}
 }
