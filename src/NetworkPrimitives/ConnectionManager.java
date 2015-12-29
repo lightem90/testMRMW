@@ -25,18 +25,18 @@ public class ConnectionManager {
     public final static String SEPARATOR = "/";
     public final static String ACK_SEPARATOR = "_";
 
-    //Class constants
+    /* Class constants */
     private final static String ADDRESS_PATH = "address.txt";
     private final static int PORT = 3000;
     private final static int INVALID = -1;
 
 
-    // Class buffer
+    /* Class buffer */
     private static final int BUFFER_SIZE = 1024; // random for now
     private ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
     private ByteBuffer writeBuffer = ByteBuffer.allocate(BUFFER_SIZE);
 
-    // Class connection variables
+    /* Class connection variables */
     private SocketAddress hostAddress;
     private Selector selector;
     private ArrayList<SocketChannel> connectedServerChannels;
@@ -56,7 +56,6 @@ public class ConnectionManager {
     private EncDec ED;
 
     private Node.State state;
-
 
     // Initialization
     public ConnectionManager(Node c){
@@ -135,6 +134,7 @@ public class ConnectionManager {
                 channelToAdd = SocketChannel.open();
                 channelToAdd.configureBlocking(false);
                 channelToAdd.connect(toAdd);
+                System.out.println("Registering " + toAdd.toString() + " to selector for connection");
                 key = channelToAdd.register(selector, SelectionKey.OP_CONNECT);
 
             }catch (IOException e)
@@ -169,6 +169,7 @@ public class ConnectionManager {
 
                     if (key.isAcceptable()) {
                         accept(key);
+                        /* If the key is readable I have to handle the input properly, depending if there are pending operations or I'm just listening and answering to requests */
                     } else if (key.isReadable()) {
 
                         String[] tokens = readMessages(key);
@@ -199,7 +200,7 @@ public class ConnectionManager {
                             String[] reqToken = m.getRequestType().split(ACK_SEPARATOR);
 
                             if (reqToken.length == 2) {
-                                //Meaning is a response message (_ack) to handle properly by the communicate class
+                                //Meaning is a response message (_ack) to some kind of communicate phase to be handled properly by the communicate class
                                 Node.State nextState = null;
 
                                 switch (state) {
@@ -248,8 +249,10 @@ public class ConnectionManager {
                         finishConnection(key);
 
                     else if (key.isWritable()){
+                        /*
                         System.out.println("print this is the key is writable (OP_WRITE set)");
                         write(new View("testView"));
+                        */
                         }
                     }
 
@@ -264,10 +267,10 @@ public class ConnectionManager {
     /* Answering to the received request in different ways depending upon the request. The important thing to notice is that it replies with the same request type (idSender + rndID) and _ack */
     private void answer(Message receivedMessage, SocketChannel channel) {
 
+        //Shouldn't this be the local tag?
         Tag maxTag = findMaxTagFromSet(rep);
         //Splitting: the first field is a redundant for who is sending the request and the second a rnd number identifying the phase
         String tokenType[] = receivedMessage.getRequestType().split(SEPARATOR);
-
 
             switch (tokenType[2]) {
 
@@ -288,9 +291,8 @@ public class ConnectionManager {
                     }
                     else {
 
-                        //I think this is wrong, if a prewrite is received it shouldn't become localView now. It should wait the finalize message and until that should be stored in rep
+                        //This line sets the new tag as local highest tag.. must wait finalize for this?
                         //n.setLocalTag(newTag);
-                        //n.setLocalView(receivedMessage.getView());
                         n.getLocalView().setLabel(View.Label.PRE);
                         rep.put(receivedMessage.getTag(), receivedMessage.getView());
                         //Responding with receivedTag. Using the attribute from message instead of newTag for readability
@@ -308,6 +310,7 @@ public class ConnectionManager {
                         //View is finalized I can use that as local now
                         n.setLocalTag(bestTag);
                         n.setLocalView(rep.get(bestTag));
+                        System.out.println("Received finalize after correct pre-write procedure");
                         sendMessage(channel, new Message(receivedMessage.getRequestType() + ACK_SEPARATOR + "ack", n.getLocalTag(), n.getLocalView(), n.getSettings().getNodeId()));
                         //saving proper message in replica map, in this way I can retrieve the node view
                         replica.put(receivedMessage.getSenderId(), receivedMessage);
@@ -316,7 +319,8 @@ public class ConnectionManager {
                         View tmp = new View("");
                         tmp.setLabel(View.Label.FIN);
                         rep.put(bestTag, tmp);
-                        sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", bestTag, tmp, n.getSettings().getNodeId()));
+                        System.out.println("Received finalize with an unknown tag");
+                        sendMessage(channel, new Message(receivedMessage.getRequestType() + ACK_SEPARATOR + "ack", bestTag, tmp, n.getSettings().getNodeId()));
                     }
 
                     break;
@@ -324,9 +328,11 @@ public class ConnectionManager {
                 case "gossip":
 
                     Tag latestTag = receivedMessage.getTag();
-                    if (rep.containsKey(latestTag))
+                    if (rep.containsKey(latestTag)) {
                         //storing a finalized view from a gossip message. TODO: is this right? (check the algorithm)
                         rep.put(latestTag, receivedMessage.getView());
+                        System.out.println("Updating view for already known tag");
+                    }
 
                     //saving proper message in replica map, in this way I can retrieve the node view
                     replica.put(receivedMessage.getSenderId(), receivedMessage);
@@ -346,14 +352,15 @@ public class ConnectionManager {
 
     //Networking functions**********************************************************************************************
 
+    /* Accept a connection on the listening socket (remember, the local port in which messages will be sent/received will change in a transparent way */
     private void accept(SelectionKey key) throws IOException {
 
         ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
         SocketChannel socketChannel = serverSocketChannel.accept();
         socketChannel.configureBlocking(false);
         //I changed it to op_write from OP_READ because the paper states that POSSIBLY the node with higher ID should write first. If I'm accepting a connection it means my ID is higher
-        socketChannel.register(selector, SelectionKey.OP_WRITE);
-        //add the accepted socket to the list of active servers TODO: should we update FD as well? We update it if the connect succed so maybe we should update it here as well
+        socketChannel.register(selector, SelectionKey.OP_READ);
+        //adding to the list of connected servers
         connectedServerChannels.add(socketChannel);
         //and updating channels of communicate
         comm.setChan(connectedServerChannels);
@@ -405,7 +412,6 @@ public class ConnectionManager {
                     nodesToConnect.remove(socketChannel.getRemoteAddress());
                     //update view as soon as I see an active connection
 
-                    //TODO: should this be OP_WRITE? NO! BECAUSE THE NODE WITH HIGHER ID SHOULD WRITE FIRST
                     socketChannel.register(selector, SelectionKey.OP_READ);
 
                     for (Integer id : allNodesAddress.keySet()) {
@@ -413,15 +419,13 @@ public class ConnectionManager {
                         //Yes no maybe? xD
                         if (allNodesAddress.get(id).equals(socketChannel.getRemoteAddress())) {
                             System.out.println("Detected connection from:" + id + ", updating FD");
-                            //TODO: I should update the FD upon a message arrival tho
                             n.getFD().updateFDForNode(id);
                             //Node found. exiting
                             break;
                         }
                     }
                 }
-
-                //TODO: What happens to old channels when I do setChan to older chans in communicate? For now setChan updates the communicate channels checking the differences
+                //Updating communicate channels by checking the differences
                 comm.setChan(connectedServerChannels);
             }
             else
@@ -713,6 +717,7 @@ public class ConnectionManager {
             SocketChannel newChannel = SocketChannel.open();
             newChannel.configureBlocking(false);
             newChannel.connect(s);
+            //System.out.println("Waiting " + s.toString() + " for accept");
             SelectionKey key = newChannel.register(selector, SelectionKey.OP_CONNECT);
 
         } catch (IOException e) {
@@ -723,7 +728,20 @@ public class ConnectionManager {
 
     }
 
+    public Set<Tag> GetAllStoredTags()
+    {
+        return rep.keySet();
+    }
 
+    public Collection<View> GetAllStoredViews()
+    {
+        return rep.values();
+    }
+
+    public Collection<Message> GetAllStoredMessages()
+    {
+        return replica.values();
+    }
 
     /* Getters and Setters */
     public ArrayList<SocketChannel> getConnectedServerChannels() {
@@ -733,7 +751,6 @@ public class ConnectionManager {
     public void setConnectedServerChannels(ArrayList<SocketChannel> connectedServerChannels) {
         this.connectedServerChannels = connectedServerChannels;
     }
-
 
     public Map<Integer, Message> getReplica() {
         return replica;

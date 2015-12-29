@@ -51,6 +51,11 @@ public class Node {
 
         //retrieving the array of server ids
         ArrayList<Integer> ids = cm.init();
+        if (ids.isEmpty()){
+
+            System.out.println("Error-> No nodes detected");
+            return;
+        }
         settings.setNumberOfNodes(ids.size());
         settings.setQuorum((ids.size()/2)+1);
         FD = new FailureDetector(ids,this);

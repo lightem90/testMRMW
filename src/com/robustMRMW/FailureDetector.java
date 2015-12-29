@@ -30,6 +30,7 @@ public class FailureDetector {
         leader_id = -1;
         //Heartbeat value becomes a function of the total number of nodes
         heartbeat = MAXIMUM_HEARTBEAT_VALUE_MULT * ids.size();
+        System.out.println("Failure detector for " + ids.size() + " nodes->" + ids.toString() + "\nHearthbeat maximum value:" + heartbeat);
 
         updateNodeLocalView();
 
@@ -37,6 +38,11 @@ public class FailureDetector {
 
     /* reset counter of node with id n to zero updating all the other ones (the i) */
     public void updateFDForNode(int n) {
+
+        //Discarding -1
+        if (n == -1)
+            return;
+
         boolean flag = false;
 
         //Signaling a modification to activeNode as occurred (because n is not in the activeNode list)
@@ -94,7 +100,7 @@ public class FailureDetector {
     private void updateNodeLocalView(){
 
         //this gets all active nodes ids, builds a new view FIN and sends the information to the node
-        System.out.println("Updating view after message received");
+        System.out.println("Updating view from FD");
         Set<Integer> set = activeNodes.keySet();
         System.out.println("View if FD: " + set.toString());
         View updView = new View (set);

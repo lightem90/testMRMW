@@ -46,6 +46,7 @@ public class Communicate {
 		turnsValid = new HashMap<>();
 		turnsInvalid = new HashMap<>();
 		ED = new EncDec();
+		System.out.println("Initialized communicate class");
 
 	}
 
@@ -53,6 +54,7 @@ public class Communicate {
 	//initializing write operation
 	public void write(View V) {
 
+		System.out.println("Initializing write procedure in communicate class");
 		//Storing the view to write
 		toWrite = V;
 		//notifies the manager I'm writing
@@ -63,6 +65,8 @@ public class Communicate {
 		c_phaseNext = Phase.WRITE;
 
 		phaseId = getRndId();
+		System.out.println("Query phase with id->");
+
 		//sending query to everyone
 		sendToEveryone(new Message(n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId + ConnectionManager.SEPARATOR +"query",
 				n.getLocalTag(),n.getLocalView(), n.getSettings().getNodeId()));
@@ -104,7 +108,7 @@ public class Communicate {
 			switch (c_phase) {
 				case QUERY:
 					//if I'm querying and the received message is a query response, I don't have a message stored from that id, and the identifiers are correct
-					if (tokens[2].equals("query") && !isStored && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
+					if (tokens[2].equals("query") && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
 
 						System.out.println("Received expected message: " + req);
 						turnsValid.put(rcv.getSenderId(), rcv);
@@ -133,9 +137,9 @@ public class Communicate {
 					break;
 
 				case WRITE:
-					//TODO: 2 alternatives: abort writing if prewrite fails after a fixed amout of time or counting invalid answers like this case
+					//For writing I abort the pre-write if a quorum of invalid response arrive
 					//if I'm querying and the received message is a query response and I don't have a message stored from that id
-					if (tokens[2].equals("pre-write") && !isStored && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
+					if (tokens[2].equals("pre-write")  && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
 						if (!(rcv.getTag().getEpoch().getEpoch() == -1) && !(rcv.getTag().getEpoch().getId() == -1))
 							//if it is a legit answer
 							turnsValid.put(rcv.getSenderId(), rcv);
@@ -146,6 +150,7 @@ public class Communicate {
 
 							nextPhase();
 							emptyMap(turnsValid);
+							emptyMap(turnsInvalid);
 
 							phaseId = getRndId();
 							//Sends a finalize message with the maximum tag (the nodes respond with it if its valid) and the view to finalize
@@ -168,7 +173,7 @@ public class Communicate {
 
 				case FINALIZE:
 					//if I'm querying and the received message is a query response and I don't have a message stored from that id
-					if (tokens[2].equals("finalize") && !isStored && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
+					if (tokens[2].equals("finalize") && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
 						turnsValid.put(rcv.getSenderId(), rcv);
 						//If the quorum is reached step to next phase and clear turnsValid
 						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
@@ -211,7 +216,7 @@ public class Communicate {
 			switch (c_phase) {
 				case QUERY:
 					//if I'm querying and the received message is a query response, I don't have a message stored from that id, and the identifiers are correct
-					if (tokens[2].equals("query") && !isStored && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) { // TODO: && rcv.rndID = rndID){
+					if (tokens[2].equals("query") && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
 
 						//If the quorum is reached step to next phase and clear turnsValid
 						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
@@ -237,7 +242,7 @@ public class Communicate {
 
 				case FINALIZE:
 					//if I'm querying and the received message is a query response and I don't have a message stored from that id
-					if (req.equals("finalize") && !isStored) {
+					if (req.equals("finalize") && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
 						turnsValid.put(rcv.getSenderId(), rcv);
 						//If the quorum is reached I'm done reading
 						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
@@ -315,16 +320,19 @@ public class Communicate {
 			case WRITING:
 				//If I'm writing, the phase after query is writing
 				if (c_phase == Phase.QUERY) {
+					System.out.println("Phase " + c_phase + " completed. Next phase->" +c_phaseNext);
 					c_phase = c_phaseNext;
 					c_phaseNext = Phase.FINALIZE;
 				}
 				//If I'm writing, the phase after write is finalize
 				else if (c_phase == Phase.WRITE) {
+					System.out.println("Phase " + c_phase + " completed. Next phase->" +c_phaseNext);
 					c_phase = c_phaseNext;
 					c_phaseNext = Phase.ANSWERING;
 				}
 				//The successive phase and state of finalize is answering again, meaning I'm done with the writing procedure
 				else if (c_phase == Phase.FINALIZE) {
+					System.out.println("Phase " + c_phase + " completed. Next phase->" +c_phaseNext);
 					c_phase = c_phaseNext;
 					c_phaseNext = Phase.ANSWERING;
 					c_state = Node.State.ANSWERING;
@@ -335,11 +343,13 @@ public class Communicate {
 			case READING:
 				//If I'm reading, the phase after query is writing
 				if (c_phase == Phase.QUERY) {
+					System.out.println("Phase " + c_phase + " completed. Next phase->" +c_phaseNext);
 					c_phase = c_phaseNext;
 					c_phaseNext = Phase.WRITE;
 				}
 				//The successive phase and state of finalize in reading is answering again, meaning I'm done with the reading procedure after a gossip message
 				else if (c_phase == Phase.FINALIZE) {
+					System.out.println("Phase " + c_phase + " completed. Next phase->" +c_phaseNext);
 					c_phase = c_phaseNext;
 					c_phaseNext = Phase.ANSWERING;
 					c_state = Node.State.ANSWERING;
@@ -357,7 +367,7 @@ public class Communicate {
 		n.getCm().setState(Node.State.ANSWERING);
 		emptyMap(turnsInvalid);
 		emptyMap(turnsValid);
-
+		System.out.println("Write error, answering again");
 	}
 
 	private void emptyMap(HashMap<Integer,Message> map) {
@@ -373,7 +383,9 @@ public class Communicate {
 	private int getRndId() {
 
 		Random rand = new Random();
-		return rand.nextInt(Integer.MAX_VALUE);
+		int rnd = rand.nextInt(Integer.MAX_VALUE);
+		System.out.println("New phase identifier->" +rnd);
+		return rnd;
 
 	}
 
@@ -431,9 +443,25 @@ public class Communicate {
 		return lastTag;
 	}
 
+	private void printAllCommunicateChannels() {
+
+		System.out.println("Printing all communicate channels");
+		for (SocketChannel c : chan)
+			printRemoteAddressFromChannel(c);
+		System.out.println("*************END**********");
+	}
+
+	private void printRemoteAddressFromChannel(SocketChannel s)
+	{
+		try {
+			System.out.println("communicate channel: " + s.getRemoteAddress().toString());
+		} catch (IOException e) {
+			System.out.println("non-existing or yet not connected communicate channel");
+		}
+
+	}
 
 	/*Getters and Setters */
-
 	public ArrayList<SocketChannel> getChan() {
 		return chan;
 	}
@@ -442,16 +470,21 @@ public class Communicate {
 	public void setChan(ArrayList<SocketChannel> channels) {
 		//adding channel if not present
 		for (SocketChannel c : channels) {
-			if (!this.chan.contains(c))
+			if (!this.chan.contains(c)) {
 				this.chan.add(c);
-
+				System.out.print("Adding ");
+				printRemoteAddressFromChannel(c);
 			}
-		//deleting channel if wrong
-		for (SocketChannel c : this.chan){
-			if (!channels.contains(c))
-				this.chan.remove(c);
 
 		}
+		//deleting channel if wrong
+		for (SocketChannel c : this.chan){
+			if (!channels.contains(c)) {
+				System.out.print("Removing ");
+				this.chan.remove(c);
+			}
+		}
 	}
+
 }
 
