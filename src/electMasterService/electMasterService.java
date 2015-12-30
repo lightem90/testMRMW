@@ -226,3 +226,101 @@ public class electMasterService {
 
 
 }
+
+
+
+//********************************************* ALGORITH FROM PAPER
+/*
+DO FOREVER BEGIN:
+
+    //LEADER ELECTION
+    LET FDin = failureDetector();                                                                        //Gets data from Failure Detector (or it triggers because leader goes offline)
+    LET seemCrd = {                                                                                      //Array of all possible leaders, these are all conditions a node pl should have to be contained in seemCrd
+        pl = rep[l].propV.ID.wid ? FD : (|rep[l].propV.set| > [n/2]) ?                                  //Its id should be contained in FD, Its proposed view should contain a majority of nodes
+             (|rep[l].FD| > [n/2]) ?                                                                    //Its FD should see a majority
+                (pl ? rep[l].propV.set) ?                                                               //Itself must be in the proposedView
+                     (pk ? rep[l].propV.set ? pl ? rep[k].FD) ?                                       //Each node of the proposedView should have pl in its FD (according to the last message received)
+                           ((rep[l].status = Multicast) ? (rep[l].(view = propV )?crd(l) = l)) ?       //Last status was multicast implies that view = propView and the crd is itself
+                                ((rep[l].status = Install) ? crd(l) = l)                                //Last status was Install, the crd is itself
+
+    }
+    LET valCrd = {                                                                                      //It is the crd id
+         {pl ? seemCrd :
+            (?pk ? seemCrd :
+                rep[k].propV.ID <= rep[l].propV.ID)};                                                   //If seemCrd.size > 1, the crd is the one with the highest id
+    }
+    noCrd ? (|valCrd|!= 1);                                                                            //noCrd is set if valCrd in empty (no valid leader)
+    crdID ? valCrd;
+
+    //FOLLOWER / LEADER SIDE
+     IF (
+         (|FD| > [n/2]) ?                                                                               //If FD sees a majority
+            ( (|valCrd| != 1) ?                                                                         // AND no leader is elected locally
+               (|{pk ? FD : pi ? rep[k].FD ? rep[k].noCrd}| > [n/2]))                                  // AND a majority of nodes didn't elect a leader
+             ? ((valCrd = {pi}) ?                                                                       //OR there's a leader
+                (FD != propV.set)?                                                                      // AND FD sees a different set from the proposed view
+                (|{pk ? FD : rep[k].propV = propV}| > [n/2]))                                           // AND a majority of nodes from FD sees the same proposed view
+        )
+    THEN
+        (status,propV ) ? (Propose, inc(), FDi);                                                        //Set view to propos, with inc counter (looks like a write op) and propose it
+    ELSE
+        IF (                                                                                            //I'm not proposing
+            (valCrd = {pi}) ?                                                                           //If there's a coordinator
+                 (? pj ? view.set : rep[j].(view, status, rnd) = (view, status, rnd)) ?                 // AND every node of the current view has the same local view/status/rnd
+                    ((status != Multicast) ?                                                            //OR status is not multicast
+                        (? pj ? propV.set : rep[j].(propV,status) = (propV,Propose))                    //AND everyone is proposing
+            )
+        THEN {
+            //LEADER SIDE
+            IF(status = Multicast)                                                                      //If status is multicast AND I'M THE LEADER (pi)
+            THEN {
+                 apply(state,msg);                                                                      //Synchronize the state?
+                 input ? fetch();                                                                       //Get last multicast message as input
+                 foreach pj ? P DO if pj ? view.set THEN msg[j] ? rep[j].input ELSE msg[j] ??;       //Re-apply last valid message or empty to current nodes
+                  rnd ? rnd + 1;                                                                        //Update round number
+            }
+            ELSE IF (status = Propose )                                                                 //If is proposing
+            THEN
+                (state,status,msg) ? (synchState(rep),Install,synchMsgs(rep));                              //Step to install
+             ELSE IF (status = Install )                                                                //If is install
+            THEN
+                 (view,status,rnd) ? (propV,Multicast, 0);                                                  //Step to multicast
+         }
+         ELSE {
+
+            IF ( valCrd = {pl} ?                                                                        //If a leader exists
+                    l != i ?                                                                            //it's not me
+                        ((rep[l].rnd = 0 ?                                                              //round number is 0
+                        rnd < rep[l].rnd ?                                                              //round number is lesse tham last msg from leader
+                        rep[l].(view != propV ))                                                         //view and propView from leader are different
+            THEN {
+                //FOLLOWER SIDE
+                IF ( rep[l].status = Multicast)                                                         //if leader is multicasting
+                THEN {
+                    IF ( rep[l].state = ? )
+                    THEN
+                         rep[l].state ? state                                                           //apply state
+                    rep[i] ? rep[l];
+                    apply(state,rep[l].msg);
+                    input ? fetch();                                                                    //input is last multicast message
+                }
+                ELSE IF (rep[l].status = Install)
+                    THEN rep[i] ? rep[l];
+                ELSE IF (rep[l].status = Propose)
+                    THEN (status,propV ) ? rep[l].(status,propV );                                      //store last (status/prop)/rep from l
+            }
+        }
+        let m = rep[i];                                                                                 //Consolidate state every PCE round
+        IF ((status = Multicast) ?
+            rnd(mod PCE) != 0 )
+        THEN
+          m.state ??;
+
+        LET sendSet =
+        (seemCrd ?{pk ? propV.set : valCrd = {pi}}?
+            {pk ? FD : noCrd ? (status = Propose)})
+        FOREACH pj ? sendSet DO SEND(m);                                                                //Sends state replica each PCE round
+
+Upon message arrival m from pj do rep[j] ? m;                                                           //Store replica from others
+
+*/
