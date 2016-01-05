@@ -44,11 +44,11 @@ public class ConnectionManager {
     private Map<Integer,InetSocketAddress> allNodesAddress;
 
     //Here I store the pair Tag - View that I use to answer
-    private Map<Tag, View> rep;
+    private Map<Tag, View> tagViewMap;
     //Here I store the View sent by the sender (should be the one dictated by the leader)
-    private Map<Integer,Message> replica;
-    //Here I store the proposedView of the Leader Election procedure, should be the FD of the nodes as well
-    private Map<Integer,Message> replicaPropView;
+    private Map<Integer,Message> lastDeliveredMessageMap;
+    //Map of replicated state machines, one for each node in the system
+    private Map<Integer,MachineStateReplica> rep;
 
     // Custom objects
     private Communicate comm;
@@ -61,12 +61,13 @@ public class ConnectionManager {
     public ConnectionManager(Node c){
 
 
-        rep = new HashMap<>();
+        tagViewMap = new HashMap<>();
+        rep = new HashMap<>(c.getSettings().getNumberOfNodes());
         ED = new EncDec();
         n = c;
 
-        //initializing rep with first tag and current view (nobody active), the view will change as soon as we receive messages from other nodes
-        rep.put(n.getLocalTag(),n.getLocalView());
+        //initializing tagViewMap with first tag and current view (nobody active), the view will change as soon as we receive messages from other nodes
+        tagViewMap.put(n.getLocalTag(), n.getLocalView());
 
 
     }
@@ -77,7 +78,7 @@ public class ConnectionManager {
         nodesToConnect = new ArrayList<>();
         connectedServerChannels = new ArrayList<>();
         allNodesAddress = new HashMap<>();
-        replica = new HashMap<>();
+        lastDeliveredMessageMap = new HashMap<>();
         Selector socketSelector = null;
 
 
@@ -189,6 +190,7 @@ public class ConnectionManager {
 
                             //Should be a valid message: updating FD
                             n.getFD().updateFDForNode(m.getSenderId());
+
                             if (state == Node.State.ANSWERING) {
                                 //Most probable case is handled immediately, no ongoing operation so I just answer
                                 //Messages with "_ack" are discarded automatically
@@ -268,16 +270,18 @@ public class ConnectionManager {
     private void answer(Message receivedMessage, SocketChannel channel) {
 
         //Shouldn't this be the local tag?
-        Tag maxTag = findMaxTagFromSet(rep);
+        Tag maxTag = findMaxTagFromSet(tagViewMap);
         //Splitting: the first field is a redundant for who is sending the request and the second a rnd number identifying the phase
         String tokenType[] = receivedMessage.getRequestType().split(SEPARATOR);
 
             switch (tokenType[2]) {
 
                 case "query":
-                    sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", maxTag, rep.get(maxTag), n.getSettings().getNodeId()));
-                    //saving proper message in replica map, in this way I can retrieve the node view
-                    replica.put(receivedMessage.getSenderId(), receivedMessage);
+                    sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", maxTag, tagViewMap.get(maxTag), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
+                    //saving proper message in lastDeliveredMessageMap map, in this way I can retrieve the node view
+                    lastDeliveredMessageMap.put(receivedMessage.getSenderId(), receivedMessage);
+                    /* Syncincg the receveived message, if the message is a query it contains the view and not the proposed view */
+                    syncReplica(receivedMessage,false);
                     break;
 
                 case "pre-write":
@@ -286,7 +290,7 @@ public class ConnectionManager {
                     Tag newTag = receivedMessage.getTag();
                     if (maxTag.compareTo(newTag) >= 0) {
                         System.out.println("Received tag smaller than local max tag");
-                        sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", new Tag(new Epoch(INVALID,INVALID),INVALID), new View (""), n.getSettings().getNodeId()));
+                        sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", new Tag(new Epoch(INVALID,INVALID),INVALID), new View (""), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
                         break;
                     }
                     else {
@@ -294,33 +298,35 @@ public class ConnectionManager {
                         //This line sets the new tag as local highest tag.. must wait finalize for this?
                         //n.setLocalTag(newTag);
                         n.getLocalView().setLabel(View.Label.PRE);
-                        rep.put(receivedMessage.getTag(), receivedMessage.getView());
-                        //Responding with receivedTag. Using the attribute from message instead of newTag for readability
-                        sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", receivedMessage.getTag(), receivedMessage.getView(), n.getSettings().getNodeId()));
-                        //saving proper message in replica map, in this way I can retrieve the node view
-                        replica.put(receivedMessage.getSenderId(), receivedMessage);
+                        tagViewMap.put(receivedMessage.getTag(), receivedMessage.getView());
+                        //Responding with the last higher tag (that must be this and the written view
+                        sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", receivedMessage.getTag(), receivedMessage.getView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
+                        //saving proper message in lastDeliveredMessageMap map, in this way I can retrieve the node view
+                        lastDeliveredMessageMap.put(receivedMessage.getSenderId(), receivedMessage);
                     }
                     break;
 
                 case "finalize":
                     Tag bestTag = receivedMessage.getTag();
-
-                    if (rep.containsKey(bestTag)) {
-                        rep.get(bestTag).setLabel(View.Label.FIN);
+                    /* Syncing the replica with the proposedView */
+                    syncReplica(receivedMessage,true);
+                    if (tagViewMap.containsKey(bestTag)) {
+                        tagViewMap.get(bestTag).setLabel(View.Label.FIN);
                         //View is finalized I can use that as local now
                         n.setLocalTag(bestTag);
-                        n.setLocalView(rep.get(bestTag));
+                        //This is okay since I do this only after a succeding write operation
+                        n.setLocalView(tagViewMap.get(bestTag));
                         System.out.println("Received finalize after correct pre-write procedure");
-                        sendMessage(channel, new Message(receivedMessage.getRequestType() + ACK_SEPARATOR + "ack", n.getLocalTag(), n.getLocalView(), n.getSettings().getNodeId()));
-                        //saving proper message in replica map, in this way I can retrieve the node view
-                        replica.put(receivedMessage.getSenderId(), receivedMessage);
+                        sendMessage(channel, new Message(receivedMessage.getRequestType() + ACK_SEPARATOR + "ack", n.getLocalTag(), n.getProposedView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
+                        //saving proper message in lastDeliveredMessageMap map, in this way I can retrieve the node view
+                        lastDeliveredMessageMap.put(receivedMessage.getSenderId(), receivedMessage);
                     } else {
 
                         View tmp = new View("");
                         tmp.setLabel(View.Label.FIN);
-                        rep.put(bestTag, tmp);
+                        tagViewMap.put(bestTag, tmp);
                         System.out.println("Received finalize with an unknown tag");
-                        sendMessage(channel, new Message(receivedMessage.getRequestType() + ACK_SEPARATOR + "ack", bestTag, tmp, n.getSettings().getNodeId()));
+                        sendMessage(channel, new Message(receivedMessage.getRequestType() + ACK_SEPARATOR + "ack", bestTag, n.getProposedView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
                     }
 
                     break;
@@ -328,14 +334,13 @@ public class ConnectionManager {
                 case "gossip":
 
                     Tag latestTag = receivedMessage.getTag();
-                    if (rep.containsKey(latestTag)) {
-                        //storing a finalized view from a gossip message. TODO: is this right? (check the algorithm)
-                        rep.put(latestTag, receivedMessage.getView());
+                    if (tagViewMap.containsKey(latestTag)) {
+                        tagViewMap.put(latestTag, receivedMessage.getView());
                         System.out.println("Updating view for already known tag");
                     }
 
-                    //saving proper message in replica map, in this way I can retrieve the node view
-                    replica.put(receivedMessage.getSenderId(), receivedMessage);
+                    //saving proper message in lastDeliveredMessageMap map, in this way I can retrieve the node view
+                    lastDeliveredMessageMap.put(receivedMessage.getSenderId(), receivedMessage);
                     break;
                 //Reading -1
                 default:
@@ -510,8 +515,8 @@ public class ConnectionManager {
 
     private void startElectionRoutine(){
 
-        System.out.println("This replica (CM) contains: " + replica.keySet().toString());
-        electMasterService election = new electMasterService(n.getSettings(), n.getLocalView(), this, n.getFD().getActiveNodes());
+        System.out.println("Last delivered message map contains: " + lastDeliveredMessageMap.keySet().toString());
+        electMasterService election = new electMasterService(n);
         int leader = election.electMaster();
         n.getFD().setLeader_id(leader);
         System.out.println("Master elected with id: "+ n.getFD().getLeader_id());
@@ -554,19 +559,47 @@ public class ConnectionManager {
 
     }
 
+    /* Syncin the replica object of the node accordingly to the received message at the moment it ignores round number */
+    public void syncReplica( Message rcvMessage, boolean isProposedView)
+    {
+        MachineStateReplica selectedReplica = rep.get(rcvMessage.getSenderId());
+        System.out.println("Syncing replica for node: " + rcvMessage.getSenderId());
+        selectedReplica.setId(rcvMessage.getSenderId());
+        System.out.println("Status: " + rcvMessage.getView().getStatus().toString());
+        selectedReplica.setStatus(rcvMessage.getView().getStatus());
+        System.out.println("Leader node id: "+ rcvMessage.getLeaderId());
+        selectedReplica.setLeaderId(rcvMessage.getLeaderId());
+        if (rcvMessage.getView().getStatus() == Node.Status.MULTICAST) {
+            System.out.println("Storing input as last multicast message");
+            selectedReplica.setInput(rcvMessage);
+        }
+        selectedReplica.setLastMessage(rcvMessage);
+        System.out.println("Storing current message");
+        if (isProposedView) {
+            selectedReplica.setPropView(rcvMessage.getView());
+            System.out.println("Storing proposed view");
+        }
+        else {
+            selectedReplica.setView(rcvMessage.getView());
+            System.out.println("Storing view");
+        }
+        System.out.println("Syncing completed");
+    }
+
 
 
 
     //Utilities*******************************************************************************************************************
 
-    /* finds the highest tag in rep map */
+    /* finds the highest tag in tagViewMap map */
     private Tag findMaxTagFromSet(Map<Tag, View> map) {
 
         //the minimum tag that we have is the localTag (if it is a valid view, otherwise it is the smallest possible tag)
         Tag maxTag;
         if (n.getLocalView().getLabel() == View.Label.FIN)
             maxTag = n.getLocalTag();
-        else maxTag = new Tag(new Epoch(0,0),0);
+        else
+            maxTag = new Tag(new Epoch(0,0),0);
 
         Set<Tag> tags = map.keySet();
         for (Tag tag : tags) {
@@ -730,17 +763,17 @@ public class ConnectionManager {
 
     public Set<Tag> GetAllStoredTags()
     {
-        return rep.keySet();
+        return tagViewMap.keySet();
     }
 
     public Collection<View> GetAllStoredViews()
     {
-        return rep.values();
+        return tagViewMap.values();
     }
 
     public Collection<Message> GetAllStoredMessages()
     {
-        return replica.values();
+        return lastDeliveredMessageMap.values();
     }
 
     /* Getters and Setters */
@@ -752,12 +785,12 @@ public class ConnectionManager {
         this.connectedServerChannels = connectedServerChannels;
     }
 
-    public Map<Integer, Message> getReplica() {
-        return replica;
+    public Map<Integer, Message> getLastDeliveredMessageMap() {
+        return lastDeliveredMessageMap;
     }
 
-    public void setReplica(Map<Integer, Message> replica) {
-        this.replica = replica;
+    public void setLastDeliveredMessageMap(Map<Integer, Message> lastDeliveredMessageMap) {
+        this.lastDeliveredMessageMap = lastDeliveredMessageMap;
     }
 
     public Node.State getState() {
@@ -766,6 +799,13 @@ public class ConnectionManager {
 
     public void setState(Node.State state) {
         this.state = state;
+    }
+
+    public Map<Integer, MachineStateReplica> getRep() {
+        return rep;
+    }
+    public void setRep(Map<Integer, MachineStateReplica> rep) {
+        this.rep = rep;
     }
 
 

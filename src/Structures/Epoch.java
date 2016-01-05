@@ -5,7 +5,7 @@ package Structures;
  */
 public class Epoch implements Comparable<Epoch>{
 
-    private int epoch;
+    private long epoch;
     private int id;
 
     public Epoch(){}
@@ -30,7 +30,7 @@ public class Epoch implements Comparable<Epoch>{
         if (epoch == anotherEpoch.getEpoch())
             return Integer.compare(id,anotherEpoch.getId());
         else
-            return Integer.compare(epoch,anotherEpoch.getEpoch());
+            return Long.compare(epoch,anotherEpoch.getEpoch());
     }
     @Override
     public int hashCode() {
@@ -44,11 +44,11 @@ public class Epoch implements Comparable<Epoch>{
     }
 
     /* Getters and Setters */
-    public int getEpoch() {
+    public long getEpoch() {
         return epoch;
     }
 
-    public void setEpoch(int epoch) {
+    public void setEpoch(long epoch) {
         this.epoch = epoch;
     }
 

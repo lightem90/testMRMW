@@ -6,8 +6,10 @@ package electMasterService;
 
 import NetworkPrimitives.ConnectionManager;
 import NetworkPrimitives.Settings;
+import Structures.MachineStateReplica;
 import Structures.Message;
 import Structures.View;
+import com.robustMRMW.Node;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -24,12 +26,13 @@ public class electMasterService {
 
 
     private Map<Integer,Integer> failureDetector;
-    private Map<Integer, Message> rep;
+    private Map<Integer, MachineStateReplica> rep;
     private ArrayList<Integer> seemCrd;
     private ArrayList<SocketChannel> chan;
 
     private View view;
     private Settings mSet;
+    private Node currentNode;
     private ByteBuffer writeBuffer = ByteBuffer.allocate(1024);
     private ByteBuffer readBuffer = ByteBuffer.allocate(1024);
 
@@ -38,14 +41,14 @@ public class electMasterService {
 
 
     /*TODO: Where do we detect current leader is dead? */
+    public electMasterService(Node n){
 
-    public electMasterService(Settings currentSettings, View localView, ConnectionManager cm, Map<Integer,Integer> nodeFailureDetector){
-
-        failureDetector = nodeFailureDetector;
-        view = localView;
-        rep = cm.getReplica();
-        mSet = currentSettings;
-        chan = cm.getConnectedServerChannels();
+        failureDetector = n.getFD().getActiveNodes();
+        view = n.getLocalView();
+        rep = n.getCm().getRep();
+        mSet = n.getSettings();
+        chan = n.getCm().getConnectedServerChannels();
+        currentNode = n;
 
     }
 
@@ -59,23 +62,28 @@ public class electMasterService {
         System.out.println("Failure detector says these nodes are active: " + idList.toString());
 
         for (Integer l : idList) {
-            System.out.println("Node: " + l);
+            System.out.println("Node# " + l);
 
             //Getting all the information about active node l (Last message with proper view received)
             if (rep.containsKey(l)) {
-                Message m = rep.get(l);
-                View nodeView = m.getView();
-                nodeView.setArrayFromValueString();
+                MachineStateReplica nodeReplicatedState = rep.get(l);
+                View nodeReplicatedPropView = nodeReplicatedState.getView();
+                nodeReplicatedPropView.setArrayFromValueString();
 
-                System.out.println("Contained with view: " + nodeView.getValue());
+                System.out.println("Contained with view: " + nodeReplicatedPropView.getValue());
 
                 //isContained checks if l has a quorum for his view and if he is contained in each view of the nodes of his view
-                //todo: check if iscontained does is job here or if i need replicas
-                if ((nodeView.getIdArray().size() >= mSet.getQuorum()) && isContained(nodeView, l))
-                    seemCrd.add(l);
+                if ((nodeReplicatedPropView.getIdArray().size() >= mSet.getQuorum()) && isContained(nodeReplicatedPropView, l))
+                    if (nodeReplicatedState.getStatus() == Node.Status.NONE ||
+                            nodeReplicatedState.getStatus() == Node.Status.PROPOSE  )
+                        seemCrd.add(l);
+                    else if (nodeReplicatedState.getStatus() == Node.Status.MULTICAST && nodeReplicatedState.getView().equals(nodeReplicatedState.getPropView()) && nodeReplicatedState.getLeaderId() == nodeReplicatedState.getId())
+                        seemCrd.add(l);
+                    else if (nodeReplicatedState.getStatus() == Node.Status.INSTALL && nodeReplicatedState.getLeaderId() == nodeReplicatedState.getId())
+                        seemCrd.add(l);
             }
             else {
-                //Should be me
+                //Should be me, but should never happen
                 System.out.println("Not in Replica");
                 if (failureDetector.size() >= mSet.getQuorum() && isContained(view,mSet.getNodeId()))
                     seemCrd.add(mSet.getNodeId());
@@ -84,8 +92,12 @@ public class electMasterService {
             }
         }
 
-        if (seemCrd == null || seemCrd.isEmpty()) noCrd = true;
-        else System.out.println("seemCrd contains: " +seemCrd.toString());
+        if (seemCrd == null || seemCrd.isEmpty()) {
+            noCrd = true;
+            currentNode.getFD().setLeader_id(-1);
+        }
+        else
+            System.out.println("seemCrd contains: " +seemCrd.toString());
         return proposeMaster();
 
     }
@@ -200,17 +212,20 @@ public class electMasterService {
 
         System.out.println("Is: " + id + " contained in:" + mView.getValue());
         mView.setArrayFromValueString();
+        // Return if the proposed view doesn't contain myself
+        if (!mView.getIdArray().contains(mSet.getNodeId()))
+            return false;
         //for each nodeID in the propView
         for(int i : mView.getIdArray()){
 
             if (rep.containsKey(i)) {
-                Message m = rep.get(i);
-                System.out.println("Node " + i + " view contains:" + m.getView().getValue() + " must check for " + id + " presence");
-                View v = m.getView();
-                v.setArrayFromValueString();
+                MachineStateReplica nodeReplica = rep.get(i);
+                System.out.println("Node " + i + " view contains:" + nodeReplica.getPropView().getValue() + " must check for " + id + " presence");
+                View nodePropView = nodeReplica.getPropView();
+                nodePropView.setArrayFromValueString();
 
                 //Check if mId is in the view (list of active nodes of node i)
-                if (!v.getIdArray().contains(id))
+                if (!nodePropView.getIdArray().contains(id))
                     return false;
             }
         }
@@ -236,90 +251,91 @@ DO FOREVER BEGIN:
     //LEADER ELECTION
     LET FDin = failureDetector();                                                                        //Gets data from Failure Detector (or it triggers because leader goes offline)
     LET seemCrd = {                                                                                      //Array of all possible leaders, these are all conditions a node pl should have to be contained in seemCrd
-        pl = rep[l].propV.ID.wid ? FD : (|rep[l].propV.set| > [n/2]) ?                                  //Its id should be contained in FD, Its proposed view should contain a majority of nodes
-             (|rep[l].FD| > [n/2]) ?                                                                    //Its FD should see a majority
-                (pl ? rep[l].propV.set) ?                                                               //Itself must be in the proposedView
-                     (pk ? rep[l].propV.set ? pl ? rep[k].FD) ?                                       //Each node of the proposedView should have pl in its FD (according to the last message received)
-                           ((rep[l].status = Multicast) ? (rep[l].(view = propV )?crd(l) = l)) ?       //Last status was multicast implies that view = propView and the crd is itself
-                                ((rep[l].status = Install) ? crd(l) = l)                                //Last status was Install, the crd is itself
+        pl = rep[l].propV.ID.wid belongs to FD : (|rep[l].propV.set| > [n/2]) &&                                  //Its id should be contained in FD, Its proposed view should contain a majority of nodes
+             (|rep[l].FD| > [n/2]) &&                                                                    //Its FD should see a majority
+                (pl belongs to rep[l].propV.set) &&                                                               //Itself must be in the proposedView
+                     (pk belonging to rep[l].propV.set implies pl belonging to rep[k].FD) &&                                       //Each node of the proposedView should have pl in its FD (according to the last message received)
+                           ((rep[l].status = Multicast) implies (rep[l].(view = propV )&& crd(l) = l)) &&       //Last status was multicast implies that view = propView and the crd is itself
+                                ((rep[l].status = Install) && crd(l) = l)                                //Last status was Install, the crd is itself
 
     }
     LET valCrd = {                                                                                      //It is the crd id
-         {pl ? seemCrd :
-            (?pk ? seemCrd :
+         {pl in seemCrd :
+            (for each pk in seemCrd :
                 rep[k].propV.ID <= rep[l].propV.ID)};                                                   //If seemCrd.size > 1, the crd is the one with the highest id
     }
-    noCrd ? (|valCrd|!= 1);                                                                            //noCrd is set if valCrd in empty (no valid leader)
-    crdID ? valCrd;
+    noCrd = (|valCrd|!= 1);                                                                            //noCrd is set if valCrd in empty (no valid leader)
+    crdID = valCrd;
 
     //FOLLOWER / LEADER SIDE
      IF (
-         (|FD| > [n/2]) ?                                                                               //If FD sees a majority
-            ( (|valCrd| != 1) ?                                                                         // AND no leader is elected locally
-               (|{pk ? FD : pi ? rep[k].FD ? rep[k].noCrd}| > [n/2]))                                  // AND a majority of nodes didn't elect a leader
-             ? ((valCrd = {pi}) ?                                                                       //OR there's a leader
-                (FD != propV.set)?                                                                      // AND FD sees a different set from the proposed view
-                (|{pk ? FD : rep[k].propV = propV}| > [n/2]))                                           // AND a majority of nodes from FD sees the same proposed view
+         (|FD| > [n/2]) &&                                                                               //If FD sees a majority
+            ( (|valCrd| != 1) &&                                                                         // AND no leader is elected locally
+               (|{pk belonging to FD : pi belongin to rep[k].FD && rep[k].noCrd}| > [n/2]))                                  // AND a majority of nodes didn't elect a leader
+             || ((valCrd = {pi}) &&                                                                       //OR there's a leader
+                (FD != propV.set)&&                                                                      // AND FD sees a different set from the proposed view
+                (|{pk belonging to FD : rep[k].propV = propV}| > [n/2]))                                           // AND a majority of nodes from FD sees the same proposed view
         )
     THEN
-        (status,propV ) ? (Propose, inc(), FDi);                                                        //Set view to propos, with inc counter (looks like a write op) and propose it
+        (status,propV ) = (Propose, inc(), FDi);                                                        //Set view to propos, with inc counter (looks like a write op) and propose it
     ELSE
         IF (                                                                                            //I'm not proposing
-            (valCrd = {pi}) ?                                                                           //If there's a coordinator
-                 (? pj ? view.set : rep[j].(view, status, rnd) = (view, status, rnd)) ?                 // AND every node of the current view has the same local view/status/rnd
-                    ((status != Multicast) ?                                                            //OR status is not multicast
-                        (? pj ? propV.set : rep[j].(propV,status) = (propV,Propose))                    //AND everyone is proposing
+            (valCrd = {pi}) &&                                                                           //If there's a coordinator
+                 (for each pj in view.set : rep[j].(view, status, rnd) = (view, status, rnd)) ||                 // AND every node of the current view has the same local view/status/rnd
+                    ((status != Multicast) &&                                                            //OR status is not multicast
+                        (for each pj in propV.set : rep[j].(propV,status) = (propV,Propose))                    //AND everyone is proposing
             )
         THEN {
             //LEADER SIDE
             IF(status = Multicast)                                                                      //If status is multicast AND I'M THE LEADER (pi)
             THEN {
                  apply(state,msg);                                                                      //Synchronize the state?
-                 input ? fetch();                                                                       //Get last multicast message as input
-                 foreach pj ? P DO if pj ? view.set THEN msg[j] ? rep[j].input ELSE msg[j] ??;       //Re-apply last valid message or empty to current nodes
+                 input <- fetch();                                                                       //Get last multicast message as input
+                 foreach pj in P DO if pj belongs to view.set THEN msg[j] <- rep[j].input ELSE msg[j] <- empty;       //Re-apply last valid message or empty to current nodes
                   rnd ? rnd + 1;                                                                        //Update round number
             }
             ELSE IF (status = Propose )                                                                 //If is proposing
             THEN
-                (state,status,msg) ? (synchState(rep),Install,synchMsgs(rep));                              //Step to install
+                (state,status,msg) <- (synchState(rep),Install,synchMsgs(rep));                              //Step to install
              ELSE IF (status = Install )                                                                //If is install
             THEN
-                 (view,status,rnd) ? (propV,Multicast, 0);                                                  //Step to multicast
+                 (view,status,rnd) <- (propV,Multicast, 0);                                                  //Step to multicast
          }
          ELSE {
 
-            IF ( valCrd = {pl} ?                                                                        //If a leader exists
-                    l != i ?                                                                            //it's not me
-                        ((rep[l].rnd = 0 ?                                                              //round number is 0
-                        rnd < rep[l].rnd ?                                                              //round number is lesse tham last msg from leader
+            IF ( valCrd = {pl} &&                                                                        //If a leader exists
+                    l != i &&                                                                            //it's not me
+                        ((rep[l].rnd = 0 ||                                                              //round number is 0
+                        rnd < rep[l].rnd ||                                                              //round number is lesse tham last msg from leader
                         rep[l].(view != propV ))                                                         //view and propView from leader are different
             THEN {
                 //FOLLOWER SIDE
                 IF ( rep[l].status = Multicast)                                                         //if leader is multicasting
                 THEN {
-                    IF ( rep[l].state = ? )
+                    IF ( rep[l].state = empty )
                     THEN
-                         rep[l].state ? state                                                           //apply state
-                    rep[i] ? rep[l];
+                         rep[l].state && state                                                           //apply state
+                    rep[i] <- rep[l];
                     apply(state,rep[l].msg);
-                    input ? fetch();                                                                    //input is last multicast message
+                    input <- fetch();                                                                    //input is last multicast message
                 }
                 ELSE IF (rep[l].status = Install)
-                    THEN rep[i] ? rep[l];
+                    THEN rep[i] <- rep[l];
                 ELSE IF (rep[l].status = Propose)
-                    THEN (status,propV ) ? rep[l].(status,propV );                                      //store last (status/prop)/rep from l
+                    THEN (status,propV ) <- rep[l].(status,propV );                                      //store last (status/prop)/rep from l
             }
         }
         let m = rep[i];                                                                                 //Consolidate state every PCE round
-        IF ((status = Multicast) ?
+        IF ((status = Multicast) &&
             rnd(mod PCE) != 0 )
         THEN
-          m.state ??;
+          m.state <- empty;
 
         LET sendSet =
-        (seemCrd ?{pk ? propV.set : valCrd = {pi}}?
-            {pk ? FD : noCrd ? (status = Propose)})
-        FOREACH pj ? sendSet DO SEND(m);                                                                //Sends state replica each PCE round
+        (seemCrd union{pk belonging to propV.set : valCrd = {pi}} union
+            {pk belonging to FD : noCrd || (status = Propose)})
+        FOREACH pj belonging to sendSet
+            DO SEND(m);                                                                //Sends state replica each PCE round
 
 Upon message arrival m from pj do rep[j] ? m;                                                           //Store replica from others
 

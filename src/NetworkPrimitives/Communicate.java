@@ -65,11 +65,11 @@ public class Communicate {
 		c_phaseNext = Phase.WRITE;
 
 		phaseId = getRndId();
-		System.out.println("Query phase with id->");
+		System.out.println("Query phase in write with id->"+phaseId);
 
 		//sending query to everyone
 		sendToEveryone(new Message(n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId + ConnectionManager.SEPARATOR +"query",
-				n.getLocalTag(),n.getLocalView(), n.getSettings().getNodeId()));
+				n.getLocalTag(),n.getLocalView(), n.getSettings().getNodeId(), n.getFD().getLeader_id()));
 
 	}
 
@@ -85,9 +85,10 @@ public class Communicate {
 
 		//phase identifier
 		phaseId = getRndId();
+		System.out.println("Query phase in read with id->"+phaseId);
 		//first step is to send to everyone a query request
 		sendToEveryone(new Message(n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId + ConnectionManager.SEPARATOR +"query",
-				n.getLocalTag(),n.getLocalView(), n.getSettings().getNodeId()));
+				n.getLocalTag(),n.getLocalView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
 
 	}
 
@@ -112,6 +113,8 @@ public class Communicate {
 
 						System.out.println("Received expected message: " + req);
 						turnsValid.put(rcv.getSenderId(), rcv);
+						/* Updating the replica with the local node view */
+						n.getCm().syncReplica(rcv,false);
 						System.out.println("Total of query ack received: " + turnsValid.size());
 						//If the quorum is reached step to next phase and clear turnsValid
 						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
@@ -122,7 +125,7 @@ public class Communicate {
 							phaseId = getRndId();
 							//Sends a prewrite with a generated new tag
 							sendToEveryone(new Message("pre-write" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId,
-									generateNewTag(max), toWrite, n.getSettings().getNodeId()));
+									generateNewTag(max), toWrite, n.getSettings().getNodeId(),n.getFD().getLeader_id()));
 
 							//this procedure is over so I step to pre-writing and I clear turnsValid map
 							nextPhase();
@@ -154,8 +157,8 @@ public class Communicate {
 
 							phaseId = getRndId();
 							//Sends a finalize message with the maximum tag (the nodes respond with it if its valid) and the view to finalize
-							sendToEveryone(new Message("pre-write" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId,
-									rcv.getTag(), toWrite, n.getSettings().getNodeId()));
+							sendToEveryone(new Message("finalize" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId,
+									rcv.getTag(), n.getProposedView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
 
 							return c_state;
 
@@ -170,11 +173,13 @@ public class Communicate {
 					}
 					//"not interesting" message
 					break;
-
+				//TODO: forse devo gestire anche l'abort della finalize senza lasciare la write pending, lo stesso per la read sotto?
 				case FINALIZE:
 					//if I'm querying and the received message is a query response and I don't have a message stored from that id
 					if (tokens[2].equals("finalize") && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
 						turnsValid.put(rcv.getSenderId(), rcv);
+						/* Updating the replica with the proposed node view */
+						n.getCm().syncReplica(rcv,true);
 						//If the quorum is reached step to next phase and clear turnsValid
 						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
 
@@ -223,12 +228,13 @@ public class Communicate {
 
 							//Extracts the maximum tag comparing the local and the received ones
 							Tag max = findMaxTagFromMessages(n.getLocalTag());
-							View rightView = findViewInMessages(max);
+							// I'm commenting this because I should not send a proper view, it must not be written
+							//View rightView = findViewInMessages(max);
 
 							phaseId = getRndId();
 							//Sends finalize
 							sendToEveryone(new Message("finalize" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId,
-									max, rightView, n.getSettings().getNodeId()));
+									max, n.getProposedView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
 
 							//this procedure is over so I step to pre-writing and I clear turnsValid map
 							nextPhase();
@@ -250,7 +256,7 @@ public class Communicate {
 							//set last received tag (they should be all equals)
 							n.setLocalTag(rcv.getTag());
 							//set the correct view CAN CAUSE TROUBLE BECAUSE I MAY SET AN EMPTY VIEW!
-							n.setLocalView(findViewInMessages(rcv.getTag()));
+							//n.setLocalView(findViewInMessages(rcv.getTag()));
 
 
 							System.out.println("Read complete");
@@ -259,7 +265,7 @@ public class Communicate {
 
 							//gossiping
 							sendToEveryone(new Message("gossip" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + 1,
-									n.getLocalTag(), n.getLocalView(), n.getSettings().getNodeId()));
+									n.getLocalTag(), n.getLocalView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
 
 							return c_state;
 

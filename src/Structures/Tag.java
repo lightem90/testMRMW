@@ -66,7 +66,7 @@ public class Tag implements Comparable<Tag> {
 
 		}
 		//labels are different
-		return Integer.compare(epoch.getEpoch(),anotherTag.getEpoch().getEpoch());
+		return Long.compare(epoch.getEpoch(),anotherTag.getEpoch().getEpoch());
 	}
 	@Override
 	public int hashCode() {

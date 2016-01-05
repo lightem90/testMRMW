@@ -1,5 +1,7 @@
 package Structures;
 
+import com.robustMRMW.Node;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Set;
@@ -13,32 +15,19 @@ public class View {
 	public enum Label {
 		FIN, PRE
 	}
-	public enum Status {
-		NONE(0),
-		MULTICAST(1),
-		PROPOSE(2),
-		INSTALL(3);
-		private final int value;
-
-		private Status(int value)
-		{this.value = value;}
-
-		public int GetValue()
-		{return this.value;}
-	}
 
 	private String value;
 	private Label label;
-	private Status status;
+	private Node.Status status;
 	//this is te content of the value string (a list of id's) in this way we can compare it faster maybe instead of just the string
 	//NB: LAST POSITION OF THE ARRAY IS NOT AN ID IS THE STATUS OF THE VIEW
 	private ArrayList<Integer> idArray;
 
-	/* Constructor sets by default FIN and NONE */
+	/* Constructor sets by default FIN and NONE appending the status at the end of the value string */
 	public View(String value){
 
 		this.label = Label.FIN;
-		this.status = Status.NONE;
+		this.status = Node.Status.NONE;
 
 		StringBuilder sb = new StringBuilder(value);
 		sb.append(ID_SEPARATOR);
@@ -66,10 +55,10 @@ public class View {
 		}
 
 		//Last position of the array is the view status
-		idArray.add(Status.NONE.GetValue());
+		idArray.add(Node.Status.NONE.GetValue());
 
 		label = Label.FIN;
-		status = Status.NONE;
+		status = Node.Status.NONE;
 		value = sb.toString();
 
 	}
@@ -85,7 +74,7 @@ public class View {
 			idArray.add(Integer.parseInt(tokens[i]));
 
 		//Sets the status according to the last int element of the array (should be 0-1-2-3)
-		status = Status.values()[(Integer.parseInt(tokens[i]))];
+		status = Node.Status.values()[(Integer.parseInt(tokens[i]))];
 
 	}
 
@@ -136,11 +125,11 @@ public class View {
 		this.idArray = idArray;
 	}
 
-	public Status getStatus() {
+	public Node.Status getStatus() {
 		return status;
 	}
 
-	public void setStatus(Status status) {
+	public void setStatus(Node.Status status) {
 		this.status = status;
 	}
 }

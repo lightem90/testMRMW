@@ -32,7 +32,7 @@ public class FailureDetector {
         heartbeat = MAXIMUM_HEARTBEAT_VALUE_MULT * ids.size();
         System.out.println("Failure detector for " + ids.size() + " nodes->" + ids.toString() + "\nHearthbeat maximum value:" + heartbeat);
 
-        updateNodeLocalView();
+        updateNodeProposedView();
 
     }
 
@@ -82,7 +82,7 @@ public class FailureDetector {
 
         //if a node has gone offline I have to update node view
         if (flag)
-            updateNodeLocalView();
+            updateNodeProposedView();
 
     }
 
@@ -91,21 +91,21 @@ public class FailureDetector {
     public void addNewlyConnectedNode(int newNodeId){
 
         activeNodes.put(newNodeId,0);
-        updateNodeLocalView();
+        updateNodeProposedView();
 
     }
 
 
     //this method is called each time an id has gone offline, at start (because all connected nodes are considered active) and in general each time we signal a change to the node
-    private void updateNodeLocalView(){
+    private void updateNodeProposedView(){
 
         //this gets all active nodes ids, builds a new view FIN and sends the information to the node
         System.out.println("Updating view from FD");
         Set<Integer> set = activeNodes.keySet();
         System.out.println("View if FD: " + set.toString());
         View updView = new View (set);
-        System.out.println("New local view: " + updView.getValue());
-        current.setLocalView(updView);
+        System.out.println("Nodes seen by FD after update: " + updView.getValue());
+        current.setProposedView(updView);
 
     }
 

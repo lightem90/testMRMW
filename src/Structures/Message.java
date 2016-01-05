@@ -8,15 +8,24 @@ public class Message {
 	private View view;
 	private Tag tag;
 	private int senderId;
+	private int leaderId;
 
 	public Message() {}
 
-	/* Creates a not linked message */
 	public Message(String req, Tag nTag, View nView, int sId) {
 		requestType=req;
 		view = nView;
 		tag = nTag;
 		senderId = sId;
+		leaderId = -1;
+	}
+
+	public Message(String req, Tag nTag, View nView, int sId, int lId) {
+		requestType=req;
+		view = nView;
+		tag = nTag;
+		senderId = sId;
+		leaderId = lId;
 	}
 
 
@@ -53,4 +62,14 @@ public class Message {
 	public void setSenderId(int senderId) {
 		this.senderId = senderId;
 	}
+
+
+	public int getLeaderId() {
+		return leaderId;
+	}
+
+	public void setLeaderId(int leaderId) {
+		this.leaderId = leaderId;
+	}
+
 }

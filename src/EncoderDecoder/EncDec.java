@@ -30,15 +30,17 @@ public class EncDec {
 		View tmpV = new View(String.valueOf(INVALID));
 		Tag tmpT = new Tag(new Epoch(INVALID,INVALID),INVALID);
 		int tmpS = INVALID;
+		int tmpL = INVALID;
 
 
 
 		String[] tokens = stringToDecode.split(SEPARATOR);
-		if (tokens.length == 4){
+		if (tokens.length == 5){
 
 			reqT = tokens[0];
 			tmpV.setValue(tokens[1]);
-			tmpS = Integer.parseInt(tokens[3].replace(END_STRING,""));
+			tmpS = Integer.parseInt(tokens[3]);
+			tmpL = Integer.parseInt(tokens[4].replace(END_STRING,""));
 			String tag_tokens[] = tokens[2].split(TAG_SEPARATOR);
 			if (tag_tokens.length == 4){
 				tmpT.setEpoch(new Epoch(Integer.parseInt(tag_tokens[0]),(Integer.parseInt(tag_tokens[1]))));
@@ -54,6 +56,7 @@ public class EncDec {
 
 		ret.setRequestType(reqT);
 		ret.setSenderId(tmpS);
+		ret.setLeaderId(tmpL);
 		ret.setView(tmpV);
 		ret.setTag(tmpT);
         return ret;
@@ -79,6 +82,7 @@ public class EncDec {
 
 
 		int tmpS = msgToEncode.getSenderId();
+		int tmpL = msgToEncode.getLeaderId();
 
 		//building the string with previous checked values
 		StringBuilder sb = new StringBuilder();
@@ -90,6 +94,8 @@ public class EncDec {
 		sb.append(tmpT.getEpoch().getId() + TAG_SEPARATOR + tmpT.getEpoch().getEpoch() + TAG_SEPARATOR + tmpT.getCounters().get(0).getId() + TAG_SEPARATOR + tmpT.getCounters().get(0).getCounter());
 		sb.append(SEPARATOR);
 		sb.append(tmpS);
+		sb.append(SEPARATOR);
+		sb.append(tmpL);
 		sb.append(END_STRING);
 
 

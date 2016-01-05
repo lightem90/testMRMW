@@ -5,8 +5,6 @@ import NetworkPrimitives.Settings;
 import Structures.Epoch;
 import Structures.Tag;
 import Structures.View;
-
-import java.io.IOException;
 import java.util.*;
 
 public class Node {
@@ -17,8 +15,22 @@ public class Node {
 
     }
 
+    public enum Status {
+        NONE(0),
+        MULTICAST(1),
+        PROPOSE(2),
+        INSTALL(3);
+        private final int value;
 
-    // Class variables and object
+        private Status(int value)
+        {this.value = value;}
+
+        public int GetValue()
+        {return this.value;}
+    }
+
+
+    // Custom Class variables and object
     private View localView;
     private View proposedView;
     private Tag localTag;
@@ -26,9 +38,7 @@ public class Node {
     private FailureDetector FD;
     private ConnectionManager cm;
 
-    private final  static  int RANDOM_SEED = 60;
-
-
+    // flag to indicate if this node is the master
     private boolean isMaster;
 
 
