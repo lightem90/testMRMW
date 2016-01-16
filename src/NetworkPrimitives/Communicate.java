@@ -173,7 +173,7 @@ public class Communicate {
 					}
 					//"not interesting" message
 					break;
-				//TODO: forse devo gestire anche l'abort della finalize senza lasciare la write pending, lo stesso per la read sotto?
+
 				case FINALIZE:
 					//if I'm querying and the received message is a query response and I don't have a message stored from that id
 					if (tokens[2].equals("finalize") && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
@@ -187,6 +187,30 @@ public class Communicate {
 							toWrite.setLabel(View.Label.FIN);
 							n.setLocalTag(rcv.getTag());
 							n.setLocalView(toWrite);
+
+							//If the write completes it continues with the leader election procedure (if it has to)
+							switch (toWrite.getStatus()){
+								case PROPOSE:
+									toWrite.setStatus(Node.Status.INSTALL);
+									n.getCm().write(toWrite);
+									break;
+								//TODO: checking if this is the right way to go
+								case INSTALL:
+									toWrite.setStatus(Node.Status.MULTICAST);
+									n.getCm().setRnd(0);
+									n.getCm().write(toWrite);
+									break;
+
+								//Do nothing
+								case MULTICAST:
+									int newRnd = n.getCm().getRnd();
+									n.getCm().setRnd(newRnd);
+								default:
+									//case NONE or empty
+									break;
+
+
+							}
 
 							nextPhase();
 							emptyMap(turnsValid);
@@ -254,7 +278,7 @@ public class Communicate {
 						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
 
 							//set last received tag (they should be all equals)
-							n.setLocalTag(rcv.getTag());
+							//n.setLocalTag(rcv.getTag());
 							//set the correct view CAN CAUSE TROUBLE BECAUSE I MAY SET AN EMPTY VIEW!
 							//n.setLocalView(findViewInMessages(rcv.getTag()));
 

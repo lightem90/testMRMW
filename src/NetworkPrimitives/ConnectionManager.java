@@ -56,6 +56,7 @@ public class ConnectionManager {
     private EncDec ED;
 
     private Node.State state;
+    private int rnd;
 
     // Initialization
     public ConnectionManager(Node c){
@@ -68,6 +69,8 @@ public class ConnectionManager {
 
         //initializing tagViewMap with first tag and current view (nobody active), the view will change as soon as we receive messages from other nodes
         tagViewMap.put(n.getLocalTag(), n.getLocalView());
+
+        rnd = 0;
 
 
     }
@@ -316,7 +319,7 @@ public class ConnectionManager {
                         n.setLocalTag(bestTag);
                         //This is okay since I do this only after a succeding write operation
                         n.setLocalView(tagViewMap.get(bestTag));
-                        System.out.println("Received finalize after correct pre-write procedure");
+                        System.out.println("Received finalize after correct pre-write/read procedure");
                         sendMessage(channel, new Message(receivedMessage.getRequestType() + ACK_SEPARATOR + "ack", n.getLocalTag(), n.getProposedView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
                         //saving proper message in lastDeliveredMessageMap map, in this way I can retrieve the node view
                         lastDeliveredMessageMap.put(receivedMessage.getSenderId(), receivedMessage);
@@ -334,9 +337,16 @@ public class ConnectionManager {
                 case "gossip":
 
                     Tag latestTag = receivedMessage.getTag();
-                    if (tagViewMap.containsKey(latestTag)) {
-                        tagViewMap.put(latestTag, receivedMessage.getView());
+                    if (tagViewMap.containsKey(latestTag) ) {
+                        tagViewMap.get(latestTag).setLabel(View.Label.FIN);
                         System.out.println("Updating view for already known tag");
+                    }
+                    else
+                    {
+                        System.out.println("Received gossip with an unknown tag");
+                        View tmp = new View("");
+                        tmp.setLabel(View.Label.FIN);
+                        tagViewMap.put(latestTag, tmp);
                     }
 
                     //saving proper message in lastDeliveredMessageMap map, in this way I can retrieve the node view
@@ -563,18 +573,29 @@ public class ConnectionManager {
     public void syncReplica( Message rcvMessage, boolean isProposedView)
     {
         MachineStateReplica selectedReplica = rep.get(rcvMessage.getSenderId());
+        Message lastMulticastMsg = selectedReplica.getInput();
+
         System.out.println("Syncing replica for node: " + rcvMessage.getSenderId());
         selectedReplica.setId(rcvMessage.getSenderId());
+
         System.out.println("Status: " + rcvMessage.getView().getStatus().toString());
         selectedReplica.setStatus(rcvMessage.getView().getStatus());
+
         System.out.println("Leader node id: "+ rcvMessage.getLeaderId());
         selectedReplica.setLeaderId(rcvMessage.getLeaderId());
+
+        /* TODO: add rnd: if rnd == 0 -> installing, so view can be different (should be) else multicast ence views MUST be equal*/
         if (rcvMessage.getView().getStatus() == Node.Status.MULTICAST) {
-            System.out.println("Storing input as last multicast message");
+            System.out.println("Storing input as last multicast message: checking virtual synchrony propery");
             selectedReplica.setInput(rcvMessage);
+            if (lastMulticastMsg.getView().getValue().equals(rcvMessage.getView().getValue()) /*&& rnd != 0 */)
+                System.out.println("Virtual Synchrony preserved");
+            else
+                System.out.println("Virtual Synchrony not preserved");
         }
         selectedReplica.setLastMessage(rcvMessage);
         System.out.println("Storing current message");
+
         if (isProposedView) {
             selectedReplica.setPropView(rcvMessage.getView());
             System.out.println("Storing proposed view");
@@ -807,6 +828,15 @@ public class ConnectionManager {
     public void setRep(Map<Integer, MachineStateReplica> rep) {
         this.rep = rep;
     }
+
+    public int getRnd() {
+        return rnd;
+    }
+
+    public void setRnd(int rnd) {
+        this.rnd = rnd;
+    }
+
 
 
 }

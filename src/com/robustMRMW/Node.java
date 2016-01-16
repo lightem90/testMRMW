@@ -37,6 +37,7 @@ public class Node {
     private Settings settings;
     private FailureDetector FD;
     private ConnectionManager cm;
+    private Status status;
 
     // flag to indicate if this node is the master
     private boolean isMaster;

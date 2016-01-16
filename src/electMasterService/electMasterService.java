@@ -28,26 +28,23 @@ public class electMasterService {
     private Map<Integer,Integer> failureDetector;
     private Map<Integer, MachineStateReplica> rep;
     private ArrayList<Integer> seemCrd;
-    private ArrayList<SocketChannel> chan;
 
     private View view;
+    private View propView;
+    private View FD;
     private Settings mSet;
     private Node currentNode;
-    private ByteBuffer writeBuffer = ByteBuffer.allocate(1024);
-    private ByteBuffer readBuffer = ByteBuffer.allocate(1024);
 
-
-    private boolean noCrd = false;
-
-
-    /*TODO: Where do we detect current leader is dead? */
     public electMasterService(Node n){
 
         failureDetector = n.getFD().getActiveNodes();
+        FD = new View(failureDetector.entrySet());          //FD and propView should be the same
         view = n.getLocalView();
+        view.setArrayFromValueString();
+        propView  = n.getProposedView();
+        propView.setArrayFromValueString();
         rep = n.getCm().getRep();
         mSet = n.getSettings();
-        chan = n.getCm().getConnectedServerChannels();
         currentNode = n;
 
     }
@@ -59,6 +56,7 @@ public class electMasterService {
         System.out.println("There are: " + mSet.getNumberOfNodes() + " nodes");
         seemCrd = new ArrayList<>(mSet.getNumberOfNodes());
         Set<Integer> idList = failureDetector.keySet();
+        int masterId =-1;
         System.out.println("Failure detector says these nodes are active: " + idList.toString());
 
         for (Integer l : idList) {
@@ -83,92 +81,17 @@ public class electMasterService {
                         seemCrd.add(l);
             }
             else {
-                //Should be me, but should never happen
-                System.out.println("Not in Replica");
-                if (failureDetector.size() >= mSet.getQuorum() && isContained(view,mSet.getNodeId()))
+                //Should be the current node
+                if (failureDetector.size() >= mSet.getQuorum() && isContained(propView,mSet.getNodeId()) && l == mSet.getNodeId())
                     seemCrd.add(mSet.getNodeId());
-
-
+                else
+                    System.out.println("No information about this node: " + l);
             }
         }
 
+        //Ordering the array by greater id
         if (seemCrd == null || seemCrd.isEmpty()) {
-            noCrd = true;
             currentNode.getFD().setLeader_id(-1);
-        }
-        else
-            System.out.println("seemCrd contains: " +seemCrd.toString());
-        return proposeMaster();
-
-    }
-
-    public int proposeMaster(){
-
-        int masterId = -1;
-
-        if(noCrd){
-           /*
-           * for every node in my FD that has ME in their FD, count those that have the noCrd set to true
-           * if these nodes with noCrd reach a quorum, I propose my FD as View (acting like a leader ??)
-           * */
-
-
-            //Send "noCrd" to everyone letting them know that we have no coordinator
-            writeBuffer.clear();
-            writeBuffer.put("noCrd".getBytes());
-
-            for (int i = 0; i < chan.size(); i++) {
-
-                try {
-
-                    if(!chan.get(i).isConnectionPending() && chan.get(i).isOpen()) {
-                        writeBuffer.flip();
-                        while (writeBuffer.hasRemaining()) {
-                            System.out.println("Sending noCrd to node: " + chan.get(i).getRemoteAddress());
-                            chan.get(i).write(writeBuffer);
-                        }
-                    }
-
-                } catch (IOException e) {
-                    System.out.println("Can't write to node");
-                }
-            }
-
-            //Start receiving other nodes' "noCrd" and count them until quorum is reached
-            int counter=0, i=0;
-            while (counter <  mSet.getQuorum()) {
-
-                    readBuffer.clear();
-                    String message = "";
-                    try {
-
-                        if(!chan.get(i).isConnectionPending() && chan.get(i).isOpen()) {
-                            while (chan.get(i).read(readBuffer) > 0) {
-                                // flip the buffer to start reading
-                                readBuffer.flip();
-                                message += Charset.defaultCharset().decode(
-                                        readBuffer);
-                            }
-                        }
-
-                        if (message.equals("noCrd")) {
-                            System.out.println("Read noCrd");
-                            counter++;
-                        }
-
-                    } catch (IOException e) {
-                        //if write fails it means that the channel has been closed so we cannot write to it
-                        //should remove channel (???)
-                    }
-                i++;
-                if (i >= chan.size()){
-
-                    System.out.println("Network error, cannot read an answer from nodes");
-                    break;
-
-                }
-            }
-            System.out.println("Quorum reached for noCrd");
         }
         else {
             seemCrd.sort(new Comparator<Integer>() {
@@ -177,37 +100,95 @@ public class electMasterService {
                     return o2.compareTo(o1);
                 }
             });
-            System.out.println("seemCrd sorted is: " +seemCrd.toString());
+            System.out.println("seemCrd sorted is: " + seemCrd.toString());
             masterId = seemCrd.get(0);
+            currentNode.getFD().setLeader_id(masterId);
         }
 
-        //TODO: up to now, the noCrd part of the code does not change masterId, but simply leaves it to -1 and arrives here only if quorum is reached. This should not be the final solution
-        return handleMasterId(masterId);
-
-    }
-
-    private int handleMasterId(int mId){
-
-        if(mId == -1){
-            //noCrd must be true and quorum was reached between servers
-            //TODO: should send my view to everyone and let the dicks sort themselves out
+        if (canPropose(masterId)){
+            propView.setStatus(Node.Status.PROPOSE);
+            currentNode.getCm().write(propView);
         }
-        else{
-            //real master was elected, WOW
-            if(mId == mSet.getNodeId())
-                //I'm the leader, decide what to do
-                System.out.println("Hi, I am node "+ mId +" and I am the boss");
+        else {
+            if ((masterId == mSet.getNodeId() && checkViewStatusRnd())
+                    || (view.getStatus() != Node.Status.MULTICAST && everyOneIsProposing()))
+                leaderSideOperations();
             else
-                //do nothing
-                System.out.println("Hi, I am node "+ mSet.getNodeId() +" and I think the boss should be: "+ mId);
-
+                followerSideOperations();
         }
 
-    return mId;
+        return masterId;
+
+    }
+
+//Conditions at line 248
+    private boolean canPropose(int mID){
+
+        if ((view.getIdArray().size() >= mSet.getQuorum() && mID == -1 &&  enoughReplicaWithNoCrd())
+                || (mID == mSet.getNodeId() && !(FD.getValue().equals(propView.getValue())) && enoughReplicaWithThisPropView()))
+            return true;
+        else
+            return false;
+    }
+
+
+//Part of these steps are in other parts of the code
+    private void leaderSideOperations() {
+/*
+        //LEADER SIDE
+        IF(status = Multicast)                                                                      //If status is multicast AND I'M THE LEADER (pi)
+        THEN {
+            apply(state,msg);                                                                      //Synchronize the state?
+            input <- fetch();                                                                       //Get last multicast message as input
+            foreach pj in P
+            DO if pj belongs to view.set
+            THEN msg[j] <- rep[j].input
+            ELSE msg[j] <- empty;                                                           //Re-apply last valid message or empty to current nodes
+            rnd = rnd + 1;                                                                        //Update round number
+        }ELSE
+        IF (status = Propose )                                                                               //If is proposing
+        THEN
+                (state,status,msg) <- (synchState(rep),Install,synchMsgs(rep));                              //Step to install
+        ELSE IF (status = Install )                                                                       //If is install
+        THEN
+                (view,status,rnd) <- (propV,Multicast, 0);                                                  //Step to multicast
+
+
+*/
+
     }
 
 
 
+    private void followerSideOperations() {
+
+/*
+        //FOLLOWER SIDE
+        IF ( rep[l].status = Multicast)                                                         //if leader is multicasting
+        THEN {
+            IF ( rep[l].state = empty )
+            THEN
+            rep[l].state && state                                                           //apply state
+            rep[i] <- rep[l];
+            apply(state,rep[l].msg);
+            input <- fetch();                                                                    //input is last multicast message
+        }
+        ELSE IF (rep[l].status = Install)
+        THEN rep[i] <- rep[l];
+        ELSE IF (rep[l].status = Propose)
+        THEN (status,propV ) <- rep[l].(status,propV );                                      //store last (status/prop)/rep from l
+
+
+*/
+
+    }
+
+
+
+
+//Utilities
+
+    //Check if the argument id is contained in each node view of the view passed as argument
     private boolean isContained (View mView, int id){
 
         System.out.println("Is: " + id + " contained in:" + mView.getValue());
@@ -230,8 +211,77 @@ public class electMasterService {
             }
         }
 
-
         return true;
+    }
+
+//Counts how many nodes of this view share this very same propView (FD)
+    private boolean enoughReplicaWithThisPropView()
+    {
+        int counter = 0;
+        for(int i : FD.getIdArray()){
+
+            if (rep.containsKey(i)) {
+                if (rep.get(i).getPropView().getValue().equals(propView.getValue())) {
+                    if (++counter >= mSet.getQuorum())
+                        return true;
+
+                }
+            }
+        }
+        return false;
+    }
+
+//Counts how many replicas has noCrd set
+    private boolean enoughReplicaWithNoCrd()
+    {
+        int counter = 0;
+        for(int i : FD.getIdArray()){
+
+            if (rep.containsKey(i)) {
+                if (rep.get(i).getLeaderId() == -1)
+                    if (++counter >= mSet.getQuorum())
+                        return  true;
+            }
+        }
+
+        return false;
+    }
+//checks if every node in the view has the same rnd status and view as current node
+    private boolean checkViewStatusRnd(){
+
+        for (int i : view.getIdArray())
+        {
+            if (rep.containsKey(i))
+            {
+                MachineStateReplica tmp = rep.get(i);
+                if (!(tmp.getStatus() == currentNode.getLocalView().getStatus()
+                        && tmp.getRnd() == currentNode.getCm().getRnd()
+                            && view.getValue().equals(tmp.getView().getValue())))
+                    return false;
+            }
+        }
+        return true;
+
+    }
+
+//Checks if every node in the prop view is proposing
+    private boolean everyOneIsProposing(){
+
+        int counter = 0;
+        for(int i : propView.getIdArray()){
+
+            if (rep.containsKey(i)) {
+                if (rep.get(i).getPropView().getValue().equals(propView.getValue())
+                        && rep.get(i).getPropView().getStatus() == Node.Status.PROPOSE) {
+                    if (++counter >= mSet.getQuorum())
+                        return true;
+
+                }
+            }
+        }
+        return false;
+
+
     }
 
 
@@ -271,16 +321,17 @@ DO FOREVER BEGIN:
      IF (
          (|FD| > [n/2]) &&                                                                               //If FD sees a majority
             ( (|valCrd| != 1) &&                                                                         // AND no leader is elected locally
-               (|{pk belonging to FD : pi belongin to rep[k].FD && rep[k].noCrd}| > [n/2]))                                  // AND a majority of nodes didn't elect a leader
-             || ((valCrd = {pi}) &&                                                                       //OR there's a leader
+               (|{pk belonging to FD : pi belonging to rep[k].FD && rep[k].noCrd}| > [n/2]))              // AND a majority of nodes didn't elect a leader
+             || ((valCrd = {pi}) &&                                                                       //OR i'm the leader
                 (FD != propV.set)&&                                                                      // AND FD sees a different set from the proposed view
-                (|{pk belonging to FD : rep[k].propV = propV}| > [n/2]))                                           // AND a majority of nodes from FD sees the same proposed view
+                (|{pk belonging to FD : rep[k].propV = propV}| > [n/2]))                                 // AND a majority of nodes from FD sees the same proposed view
         )
     THEN
         (status,propV ) = (Propose, inc(), FDi);                                                        //Set view to propos, with inc counter (looks like a write op) and propose it
     ELSE
+
         IF (                                                                                            //I'm not proposing
-            (valCrd = {pi}) &&                                                                           //If there's a coordinator
+            (valCrd = {pi}) &&                                                                           //If i'm the coordinator
                  (for each pj in view.set : rep[j].(view, status, rnd) = (view, status, rnd)) ||                 // AND every node of the current view has the same local view/status/rnd
                     ((status != Multicast) &&                                                            //OR status is not multicast
                         (for each pj in propV.set : rep[j].(propV,status) = (propV,Propose))                    //AND everyone is proposing
@@ -291,16 +342,19 @@ DO FOREVER BEGIN:
             THEN {
                  apply(state,msg);                                                                      //Synchronize the state?
                  input <- fetch();                                                                       //Get last multicast message as input
-                 foreach pj in P DO if pj belongs to view.set THEN msg[j] <- rep[j].input ELSE msg[j] <- empty;       //Re-apply last valid message or empty to current nodes
-                  rnd ? rnd + 1;                                                                        //Update round number
-            }
-            ELSE IF (status = Propose )                                                                 //If is proposing
-            THEN
-                (state,status,msg) <- (synchState(rep),Install,synchMsgs(rep));                              //Step to install
-             ELSE IF (status = Install )                                                                //If is install
-            THEN
-                 (view,status,rnd) <- (propV,Multicast, 0);                                                  //Step to multicast
-         }
+                 foreach pj in P
+                    DO if pj belongs to view.set
+                        THEN msg[j] <- rep[j].input
+                        ELSE msg[j] <- empty;                                                           //Re-apply last valid message or empty to current nodes
+                  rnd = rnd + 1;                                                                        //Update round number
+            }ELSE
+            IF (status = Propose )                                                                               //If is proposing
+                THEN
+                    (state,status,msg) <- (synchState(rep),Install,synchMsgs(rep));                              //Step to install
+                ELSE IF (status = Install )                                                                       //If is install
+                    THEN
+                     (view,status,rnd) <- (propV,Multicast, 0);                                                  //Step to multicast
+             }
          ELSE {
 
             IF ( valCrd = {pl} &&                                                                        //If a leader exists
