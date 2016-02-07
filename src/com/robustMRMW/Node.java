@@ -9,6 +9,8 @@ import java.util.*;
 
 public class Node {
 
+    public boolean flag;
+
     public enum State{
 
         ANSWERING, WRITING, READING
@@ -78,10 +80,12 @@ public class Node {
 
     public void run(){
 
-
+        flag = true;
         System.out.println("Running ...");
         while (true) {
 
+            //if (FD.getActiveNodes().size() >= settings.getQuorum() && FD.getLeader_id() == -1)
+            //    cm.startElectionRoutine();
             cm.run();
 
         }

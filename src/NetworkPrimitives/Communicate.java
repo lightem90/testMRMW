@@ -20,7 +20,8 @@ public class Communicate {
 	private static final int BUFFER_SIZE = 1024; // random for now
 	private ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
 	private ByteBuffer writeBuffer = ByteBuffer.allocate(BUFFER_SIZE);
-
+	private final static int INVALID = -1;
+	private final static int PCE = 20;
 
 	//Class variables
 	private HashMap<Integer, Message> turnsValid;
@@ -36,6 +37,8 @@ public class Communicate {
 	private Phase c_phase;
 	private Phase c_phaseNext;
 	private Node.State c_state;
+
+	private Tag maxTagInRead;
 
 
 	//initialization
@@ -67,15 +70,18 @@ public class Communicate {
 		phaseId = getRndId();
 		System.out.println("Query phase in write with id->"+phaseId);
 
+
+
 		//sending query to everyone
 		sendToEveryone(new Message(n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId + ConnectionManager.SEPARATOR +"query",
-				n.getLocalTag(),n.getLocalView(), n.getSettings().getNodeId(), n.getFD().getLeader_id()));
+				n.getLocalTag(),n.getLocalView(), n.getSettings().getNodeId(), n.getFD().getLeader_id()), true);
 
 	}
 
 	//initializing read operation
 	public void read() {
 
+		maxTagInRead = new Tag(	INVALID,INVALID,INVALID);
 		//notifies the manager that I'm reading
 		c_state = Node.State.READING;
 		n.getCm().setState(c_state);
@@ -88,7 +94,7 @@ public class Communicate {
 		System.out.println("Query phase in read with id->"+phaseId);
 		//first step is to send to everyone a query request
 		sendToEveryone(new Message(n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId + ConnectionManager.SEPARATOR +"query",
-				n.getLocalTag(),n.getLocalView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
+				n.getLocalTag(),n.getLocalView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()), true);
 
 	}
 
@@ -124,8 +130,8 @@ public class Communicate {
 
 							phaseId = getRndId();
 							//Sends a prewrite with a generated new tag
-							sendToEveryone(new Message("pre-write" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId,
-									generateNewTag(max), toWrite, n.getSettings().getNodeId(),n.getFD().getLeader_id()));
+							sendToEveryone(new Message(n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId + ConnectionManager.SEPARATOR + "pre-write",
+									generateNewTag(max), toWrite, n.getSettings().getNodeId(),n.getFD().getLeader_id()), false);
 
 							//this procedure is over so I step to pre-writing and I clear turnsValid map
 							nextPhase();
@@ -143,11 +149,15 @@ public class Communicate {
 					//For writing I abort the pre-write if a quorum of invalid response arrive
 					//if I'm querying and the received message is a query response and I don't have a message stored from that id
 					if (tokens[2].equals("pre-write")  && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
-						if (!(rcv.getTag().getEpoch().getEpoch() == -1) && !(rcv.getTag().getEpoch().getId() == -1))
+						if (!(rcv.getTag().getEpoch().getEpoch() == INVALID) && !(rcv.getTag().getEpoch().getId() == INVALID)) {
 							//if it is a legit answer
+							System.out.println("Received valid message: " + req);
 							turnsValid.put(rcv.getSenderId(), rcv);
-						else
-							turnsInvalid.put(rcv.getSenderId(),rcv);
+						}
+						else {
+							System.out.println("Received invalid message: " + req);
+							turnsInvalid.put(rcv.getSenderId(), rcv);
+						}
 						//If the quorum is reached for valid response step to next phase and clear turnsValid
 						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
 
@@ -157,8 +167,8 @@ public class Communicate {
 
 							phaseId = getRndId();
 							//Sends a finalize message with the maximum tag (the nodes respond with it if its valid) and the view to finalize
-							sendToEveryone(new Message("finalize" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId,
-									rcv.getTag(), n.getProposedView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
+							sendToEveryone(new Message(n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId + ConnectionManager.SEPARATOR +"finalize" ,
+									rcv.getTag(), n.getProposedView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()), false);
 
 							return c_state;
 
@@ -247,18 +257,20 @@ public class Communicate {
 					//if I'm querying and the received message is a query response, I don't have a message stored from that id, and the identifiers are correct
 					if (tokens[2].equals("query") && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
 
+						System.out.println("Received expected message: " + req);
+						turnsValid.put(rcv.getSenderId(), rcv);
 						//If the quorum is reached step to next phase and clear turnsValid
 						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
 
 							//Extracts the maximum tag comparing the local and the received ones
-							Tag max = findMaxTagFromMessages(n.getLocalTag());
+							maxTagInRead = findMaxTagFromMessages(n.getLocalTag());
 							// I'm commenting this because I should not send a proper view, it must not be written
 							//View rightView = findViewInMessages(max);
 
 							phaseId = getRndId();
 							//Sends finalize
-							sendToEveryone(new Message("finalize" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId,
-									max, n.getProposedView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
+							sendToEveryone(new Message( n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + phaseId + ConnectionManager.SEPARATOR +"finalize" ,
+									maxTagInRead, n.getProposedView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()), false);
 
 							//this procedure is over so I step to pre-writing and I clear turnsValid map
 							nextPhase();
@@ -272,7 +284,9 @@ public class Communicate {
 
 				case FINALIZE:
 					//if I'm querying and the received message is a query response and I don't have a message stored from that id
-					if (req.equals("finalize") && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
+					if (tokens[2].equals("finalize") && Integer.parseInt(tokens[0]) == n.getSettings().getNodeId() && Integer.parseInt(tokens[1]) == phaseId) {
+
+						System.out.println("Received expected message: " + req);
 						turnsValid.put(rcv.getSenderId(), rcv);
 						//If the quorum is reached I'm done reading
 						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
@@ -282,14 +296,13 @@ public class Communicate {
 							//set the correct view CAN CAUSE TROUBLE BECAUSE I MAY SET AN EMPTY VIEW!
 							//n.setLocalView(findViewInMessages(rcv.getTag()));
 
-
 							System.out.println("Read complete");
 							nextPhase();
 							emptyMap(turnsValid);
 
 							//gossiping
-							sendToEveryone(new Message("gossip" + ConnectionManager.SEPARATOR + n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + 1,
-									n.getLocalTag(), n.getLocalView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
+							sendToEveryone(new Message(n.getSettings().getNodeId() + ConnectionManager.SEPARATOR + 1 +ConnectionManager.SEPARATOR +"gossip" ,
+									maxTagInRead, n.getLocalView(), n.getSettings().getNodeId(),n.getFD().getLeader_id()), false);
 
 							return c_state;
 
@@ -313,7 +326,10 @@ public class Communicate {
 	 */
 
 
-	private void sendToEveryone(Message m){
+	private void sendToEveryone(Message m, boolean newOperation){
+
+
+		UpdateAndCheckRndForPCE(m,newOperation);
 
 		System.out.println("Sending '" + m.getRequestType() + "' to everyone");
 		for (int i = 0; i < chan.size(); i++) {
@@ -338,6 +354,18 @@ public class Communicate {
 		}
 
 
+	}
+
+	private void UpdateAndCheckRndForPCE(Message msg, boolean newOp){
+
+		if (newOp && msg.getView().getStatus() == Node.Status.MULTICAST && n.getSettings().getNodeId() == n.getFD().getLeader_id()) {
+			int tmp = n.getCm().getRnd();
+			n.getCm().setRnd(++tmp);
+			//TODO: check if rnd == PCE
+			/* if (tmp == PCE)
+			* 	*/
+
+		}
 	}
 
 
@@ -402,10 +430,11 @@ public class Communicate {
 
 	private void emptyMap(HashMap<Integer,Message> map) {
 
-		//removing each element in turnsValid
-		Set<Integer> s = map.keySet();
-		for (int i : s)
-			map.remove(i);
+//		//removing each element in turnsValid
+//		Set<Integer> s = map.keySet();
+//		for (int i : s)
+//			map.remove(i);
+		map.clear();
 
 	}
 
@@ -468,7 +497,8 @@ public class Communicate {
 		int newCVal = (int) ((lastTag.getCounters().getFirst().getCounter())+1);
 		lastTag.addCounter(new Counter(id,newCVal));
 
-
+		System.out.println("New generated tag: epoch " + lastTag.getEpoch().getEpoch() + " id: " + lastTag.getEpoch().getId() +"-"+ lastTag.getCounters().getFirst().getId()
+				+ " and counter: " +lastTag.getCounters().getFirst().getCounter() );
 
 		return lastTag;
 	}

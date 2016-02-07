@@ -15,15 +15,13 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 //as stated in the paper, probably we have to implement other messages to implement the election procedure (acknowledge of missing master for example)
 //moreover we should keep for each server the last message from it into a list, in this way we can retrieve its id and view, OR asking from it again with more messages
 public class electMasterService {
 
+    private final static int INVALID = -1;
 
     private Map<Integer,Integer> failureDetector;
     private Map<Integer, MachineStateReplica> rep;
@@ -52,11 +50,17 @@ public class electMasterService {
     public int electMaster(){
 
         System.out.println("This replica (Election) contains: " + rep.keySet().toString());
+        //Now it checks if there's a quorum of noCrd or a quorum of nodes with a leader already elected
+        int currentSystemLeader = leaderAlreadyElected();
+        if (currentSystemLeader > 0)
+            return currentSystemLeader;
+        //the noCrd quorum case it handled later
+
 
         System.out.println("There are: " + mSet.getNumberOfNodes() + " nodes");
         seemCrd = new ArrayList<>(mSet.getNumberOfNodes());
         Set<Integer> idList = failureDetector.keySet();
-        int masterId =-1;
+        int masterId =INVALID;
         System.out.println("Failure detector says these nodes are active: " + idList.toString());
 
         for (Integer l : idList) {
@@ -91,7 +95,7 @@ public class electMasterService {
 
         //Ordering the array by greater id
         if (seemCrd == null || seemCrd.isEmpty()) {
-            currentNode.getFD().setLeader_id(-1);
+            currentNode.getFD().setLeader_id(INVALID);
         }
         else {
             seemCrd.sort(new Comparator<Integer>() {
@@ -124,7 +128,7 @@ public class electMasterService {
 //Conditions at line 248
     private boolean canPropose(int mID){
 
-        if ((view.getIdArray().size() >= mSet.getQuorum() && mID == -1 &&  enoughReplicaWithNoCrd())
+        if ((view.getIdArray().size() >= mSet.getQuorum() && mID == INVALID &&  enoughReplicaWithNoCrd())
                 || (mID == mSet.getNodeId() && !(FD.getValue().equals(propView.getValue())) && enoughReplicaWithThisPropView()))
             return true;
         else
@@ -238,7 +242,7 @@ public class electMasterService {
         for(int i : FD.getIdArray()){
 
             if (rep.containsKey(i)) {
-                if (rep.get(i).getLeaderId() == -1)
+                if (rep.get(i).getLeaderId() == INVALID)
                     if (++counter >= mSet.getQuorum())
                         return  true;
             }
@@ -284,7 +288,54 @@ public class electMasterService {
 
     }
 
+    //checks if all the replicas have a leader already elected
+    private int leaderAlreadyElected()
+    {
 
+        int leaderId = INVALID;
+        HashMap<Integer,Integer> counter = new HashMap<>();
+        for (int i : propView.getIdArray()) {
+            if (rep.containsKey(i)) {
+                MachineStateReplica tmp = rep.get(i);
+                //for each replica it puts their leader id into a counter. In this way it knows how many nodes share the same leader
+                if (counter.containsKey((tmp.getLeaderId()))){
+                    int c = counter.get(tmp.getLeaderId());
+                    counter.put(tmp.getLeaderId(),++c);
+                }
+                else
+                    counter.put(tmp.getLeaderId(),0);
+            }
+        }
+
+        leaderId = findMaxCounter(counter);
+
+        //returns INVALID if there's no node with a majority
+        return leaderId;
+    }
+
+    //find the max leader that has a quorum
+private int findMaxCounter(HashMap<Integer,Integer> counter){
+
+    Set<Integer> keys = counter.keySet();
+    int counterValueForLeader = INVALID;
+    int leaderID = Integer.MIN_VALUE;
+
+    for (int i : keys)
+    {
+        int tmp = counter.get(i);
+        if (tmp > counterValueForLeader && tmp >= mSet.getQuorum()) {
+            //update max, only one can have a majority tho
+            counterValueForLeader = tmp;
+            leaderID = i;
+        }
+
+
+    }
+    //returns INVALID if there's no node with a majority
+    return leaderID;
+
+
+}
 
 
 
@@ -294,7 +345,7 @@ public class electMasterService {
 
 
 
-//********************************************* ALGORITH FROM PAPER
+//********************************************* ALGORITHM FROM PAPER
 /*
 DO FOREVER BEGIN:
 
@@ -332,9 +383,9 @@ DO FOREVER BEGIN:
 
         IF (                                                                                            //I'm not proposing
             (valCrd = {pi}) &&                                                                           //If i'm the coordinator
-                 (for each pj in view.set : rep[j].(view, status, rnd) = (view, status, rnd)) ||                 // AND every node of the current view has the same local view/status/rnd
+                 (for each pj in view.set : rep[j].(view, status, rnd) = (view, status, rnd)) ||                 // AND every node of the current view has my same local view/status/rnd
                     ((status != Multicast) &&                                                            //OR status is not multicast
-                        (for each pj in propV.set : rep[j].(propV,status) = (propV,Propose))                    //AND everyone is proposing
+                        (for each pj in propV.set : rep[j].(propV,status) = (propV,Propose))                    //AND everyone is proposing as I am
             )
         THEN {
             //LEADER SIDE

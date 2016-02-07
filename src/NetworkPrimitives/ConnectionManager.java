@@ -97,7 +97,7 @@ public class ConnectionManager {
                 return new ArrayList<>();
             }
 
-
+            //initializes the conection
             try {
 
                 socketSelector = Selector.open();
@@ -119,6 +119,14 @@ public class ConnectionManager {
         } catch (IOException e) {
             System.out.println("Error in opening address file");
             e.printStackTrace();
+        }
+
+        //initializes all the replicas
+        for (int i : ids)
+        {
+            MachineStateReplica tmp = new MachineStateReplica();
+            tmp.setId(i);
+            rep.put(i,tmp);
         }
 
         //returns an array with the ids of all nodes in the network (read from address.txt file). The quorum is ids.size()/2
@@ -213,7 +221,7 @@ public class ConnectionManager {
                                     case WRITING:
                                         //If I'm querying I still have to check if this is the answer of a query request and not of an old phase
                                         nextState = comm.handleWriteMsg(m, reqToken[0]);
-                                        if (nextState != state) {
+                                        if (nextState != state && nextState != null) {
                                             System.out.println("I'm done " + state + ", now I'm " + nextState);
                                             state = nextState;
                                         }
@@ -222,7 +230,7 @@ public class ConnectionManager {
                                     case READING:
                                         //If I'm querying I still have to check if this is the answer of a query request and not of an old phase
                                         state = comm.handleReadMsg(m,reqToken[0]);
-                                        if (nextState != state) {
+                                        if (nextState != state && nextState != null) {
                                             System.out.println("I'm done " + state + ", now I'm " + nextState);
                                             state = nextState;
                                         }
@@ -261,7 +269,10 @@ public class ConnectionManager {
                         }
                     }
 
-
+                if (connectedServerChannels.size() >= n.getSettings().getQuorum() && n.getSettings().getNodeId() == 5001 && n.flag) {
+                    write();
+                    n.flag = false;
+                }
             } catch (Exception e) {
                 System.out.println("Server crashed in loop");
                 e.printStackTrace();
@@ -291,6 +302,12 @@ public class ConnectionManager {
 
                     //In the case I receive a pre-write message, if the tag is the highest I know i set the new view as .PRE, otherwise I send an invalid ack
                     Tag newTag = receivedMessage.getTag();
+
+                    System.out.println("Max tag is: " + maxTag.getEpoch().getEpoch() + " and id: "+ maxTag.getCounters().getFirst().getId() +
+                            "-" + maxTag.getEpoch().getId() + " and counter: " + maxTag.getCounters().getFirst().getCounter());
+
+                    System.out.println("Max tag is: " + newTag.getEpoch().getEpoch() + " and id: "+ newTag.getCounters().getFirst().getId() +
+                            "-" + newTag.getEpoch().getId() + " and counter: " + newTag.getCounters().getFirst().getCounter());
                     if (maxTag.compareTo(newTag) >= 0) {
                         System.out.println("Received tag smaller than local max tag");
                         sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", new Tag(new Epoch(INVALID,INVALID),INVALID), new View (""), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
@@ -523,7 +540,7 @@ public class ConnectionManager {
 
     //Algorithm**************************************************************************************************************************
 
-    private void startElectionRoutine(){
+    public void startElectionRoutine(){
 
         System.out.println("Last delivered message map contains: " + lastDeliveredMessageMap.keySet().toString());
         electMasterService election = new electMasterService(n);
@@ -532,9 +549,7 @@ public class ConnectionManager {
         System.out.println("Master elected with id: "+ n.getFD().getLeader_id());
             if (leader == INVALID){
                 System.out.println("No suitable leader, querying...");
-                write(n.getProposedView());
-                //read();
-                //System.out.println("Query ended");
+                read();
                 return;
 
             }

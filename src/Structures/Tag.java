@@ -52,7 +52,7 @@ public class Tag implements Comparable<Tag> {
 	//comparing two tags means comparing: labels -> firstCounterElement -> ids (breaking simmetry)
 	@Override
 	public int compareTo(Tag anotherTag) {
-		if(epoch == anotherTag.getEpoch()) {
+		if(epoch.getEpoch() == anotherTag.getEpoch().getEpoch()) {
 
 			//labels equal so I proceed comparing counter
 			Counter t = anotherTag.getCounters().getFirst();
