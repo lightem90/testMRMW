@@ -36,11 +36,11 @@ public class electMasterService {
     public electMasterService(Node n){
 
         failureDetector = n.getFD().getActiveNodes();
-        FD = new View(failureDetector.entrySet());          //FD and propView should be the same
+        FD = new View(failureDetector.keySet());          //FD and propView should be the same
         view = n.getLocalView();
-        view.setArrayFromValueString();
+        //view.setArrayFromValueString();
         propView  = n.getProposedView();
-        propView.setArrayFromValueString();
+        //propView.setArrayFromValueString();
         rep = n.getCm().getRep();
         mSet = n.getSettings();
         currentNode = n;
@@ -49,12 +49,18 @@ public class electMasterService {
 
     public int electMaster(){
 
-        System.out.println("This replica (Election) contains: " + rep.keySet().toString());
         //Now it checks if there's a quorum of noCrd or a quorum of nodes with a leader already elected
         int currentSystemLeader = leaderAlreadyElected();
         if (currentSystemLeader > 0)
             return currentSystemLeader;
         //the noCrd quorum case it handled later
+
+        //Not enough informations to do leader election
+        if (rep.size() < mSet.getQuorum()-1) {
+
+            currentNode.getFD().setLeader_id(INVALID);
+            return INVALID;
+        }
 
 
         System.out.println("There are: " + mSet.getNumberOfNodes() + " nodes");
@@ -67,7 +73,7 @@ public class electMasterService {
             System.out.println("Node# " + l);
 
             //Getting all the information about active node l (Last message with proper view received)
-            if (rep.containsKey(l)) {
+            if (rep.containsKey(l) && l != mSet.getNodeId()) {
                 MachineStateReplica nodeReplicatedState = rep.get(l);
                 View nodeReplicatedPropView = nodeReplicatedState.getView();
                 nodeReplicatedPropView.setArrayFromValueString();
@@ -96,6 +102,7 @@ public class electMasterService {
         //Ordering the array by greater id
         if (seemCrd == null || seemCrd.isEmpty()) {
             currentNode.getFD().setLeader_id(INVALID);
+            return INVALID;
         }
         else {
             seemCrd.sort(new Comparator<Integer>() {
@@ -109,6 +116,7 @@ public class electMasterService {
             currentNode.getFD().setLeader_id(masterId);
         }
 
+
         if (canPropose(masterId)){
             propView.setStatus(Node.Status.PROPOSE);
             currentNode.getCm().write(propView);
@@ -121,7 +129,7 @@ public class electMasterService {
                 followerSideOperations();
         }
 
-        return masterId;
+        return  masterId;
 
     }
 
@@ -129,7 +137,8 @@ public class electMasterService {
     private boolean canPropose(int mID){
 
         if ((view.getIdArray().size() >= mSet.getQuorum() && mID == INVALID &&  enoughReplicaWithNoCrd())
-                || (mID == mSet.getNodeId() && !(FD.getValue().equals(propView.getValue())) && enoughReplicaWithThisPropView()))
+                || (mID == mSet.getNodeId() && !(FD.getValue().equals(propView.getValue()))
+                    && enoughReplicaWithThisPropView()))
             return true;
         else
             return false;
@@ -195,8 +204,10 @@ public class electMasterService {
     //Check if the argument id is contained in each node view of the view passed as argument
     private boolean isContained (View mView, int id){
 
+        if (rep.isEmpty())
+            return  false;
         System.out.println("Is: " + id + " contained in:" + mView.getValue());
-        mView.setArrayFromValueString();
+        //mView.setArrayFromValueString();
         // Return if the proposed view doesn't contain myself
         if (!mView.getIdArray().contains(mSet.getNodeId()))
             return false;
@@ -274,7 +285,7 @@ public class electMasterService {
         int counter = 0;
         for(int i : propView.getIdArray()){
 
-            if (rep.containsKey(i)) {
+            if (rep.containsKey(i) && i != mSet.getNodeId()) {
                 if (rep.get(i).getPropView().getValue().equals(propView.getValue())
                         && rep.get(i).getPropView().getStatus() == Node.Status.PROPOSE) {
                     if (++counter >= mSet.getQuorum())

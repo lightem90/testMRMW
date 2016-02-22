@@ -403,7 +403,7 @@ public class Communicate {
 				if (c_phase == Phase.QUERY) {
 					System.out.println("Phase " + c_phase + " completed. Next phase->" +c_phaseNext);
 					c_phase = c_phaseNext;
-					c_phaseNext = Phase.WRITE;
+					c_phaseNext = Phase.FINALIZE;
 				}
 				//The successive phase and state of finalize in reading is answering again, meaning I'm done with the reading procedure after a gossip message
 				else if (c_phase == Phase.FINALIZE) {
@@ -528,6 +528,7 @@ public class Communicate {
 
 	//Don't overwrite current channel list, just find the differences
 	public void setChan(ArrayList<SocketChannel> channels) {
+
 		//adding channel if not present
 		for (SocketChannel c : channels) {
 			if (!this.chan.contains(c)) {

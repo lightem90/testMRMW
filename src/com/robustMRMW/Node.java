@@ -88,6 +88,8 @@ public class Node {
             //    cm.startElectionRoutine();
             cm.run();
 
+            cm.checkForLeaderElection();
+
         }
 
     }

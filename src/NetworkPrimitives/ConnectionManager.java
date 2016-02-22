@@ -121,13 +121,13 @@ public class ConnectionManager {
             e.printStackTrace();
         }
 
-        //initializes all the replicas
+        /*initializes all the replicas
         for (int i : ids)
         {
             MachineStateReplica tmp = new MachineStateReplica();
             tmp.setId(i);
             rep.put(i,tmp);
-        }
+        }*/
 
         //returns an array with the ids of all nodes in the network (read from address.txt file). The quorum is ids.size()/2
         return ids;
@@ -162,6 +162,7 @@ public class ConnectionManager {
     public void run() {
 
         /* Everytime I register the not yet connected nodes to the selector */
+
 
             try {
                 // listening for connections, initializes the selector with all socket ready for I/O operations
@@ -269,10 +270,6 @@ public class ConnectionManager {
                         }
                     }
 
-                if (connectedServerChannels.size() >= n.getSettings().getQuorum() && n.getSettings().getNodeId() == 5001 && n.flag) {
-                    write();
-                    n.flag = false;
-                }
             } catch (Exception e) {
                 System.out.println("Server crashed in loop");
                 e.printStackTrace();
@@ -396,6 +393,7 @@ public class ConnectionManager {
         connectedServerChannels.add(socketChannel);
         //and updating channels of communicate
         comm.setChan(connectedServerChannels);
+
 
         System.out.println("Client " +socketChannel.getRemoteAddress().toString()+  " connected");
     }
@@ -546,13 +544,14 @@ public class ConnectionManager {
         electMasterService election = new electMasterService(n);
         int leader = election.electMaster();
         n.getFD().setLeader_id(leader);
-        System.out.println("Master elected with id: "+ n.getFD().getLeader_id());
+
             if (leader == INVALID){
                 System.out.println("No suitable leader, querying...");
                 read();
                 return;
 
             }
+        System.out.println("Master elected with id: "+ n.getFD().getLeader_id());
             if (leader == n.getSettings().getNodeId()) {
                 n.setIsMaster(true);
                 n.setLocalView(n.getProposedView());
@@ -587,7 +586,36 @@ public class ConnectionManager {
     /* Syncin the replica object of the node accordingly to the received message at the moment it ignores round number */
     public void syncReplica( Message rcvMessage, boolean isProposedView)
     {
-        MachineStateReplica selectedReplica = rep.get(rcvMessage.getSenderId());
+
+        MachineStateReplica selectedReplica;
+        if (rep.containsKey(rcvMessage.getSenderId())) {
+            selectedReplica = rep.get(rcvMessage.getSenderId());
+        }
+        else {
+            selectedReplica = new MachineStateReplica();
+        }
+        UpdateReplica(selectedReplica,rcvMessage,isProposedView);
+    }
+
+    public void checkForLeaderElection()
+    {
+        //-1 because I consider this node too
+        if (connectedServerChannels.size() >= n.getSettings().getQuorum()-1)
+            if (n.getFD().getLeader_id() < 0)
+                if (state != Node.State.READING &&
+                        state != Node.State.WRITING)
+                    startElectionRoutine();
+
+    }
+
+
+
+
+    //Utilities*******************************************************************************************************************
+
+
+    private void UpdateReplica(MachineStateReplica selectedReplica, Message rcvMessage, boolean isProposedView){
+
         Message lastMulticastMsg = selectedReplica.getInput();
 
         System.out.println("Syncing replica for node: " + rcvMessage.getSenderId());
@@ -596,7 +624,7 @@ public class ConnectionManager {
         System.out.println("Status: " + rcvMessage.getView().getStatus().toString());
         selectedReplica.setStatus(rcvMessage.getView().getStatus());
 
-        System.out.println("Leader node id: "+ rcvMessage.getLeaderId());
+        System.out.println("Leader node id: " + rcvMessage.getLeaderId());
         selectedReplica.setLeaderId(rcvMessage.getLeaderId());
 
         /* TODO: add rnd: if rnd == 0 -> installing, so view can be different (should be) else multicast ence views MUST be equal*/
@@ -614,19 +642,15 @@ public class ConnectionManager {
         if (isProposedView) {
             selectedReplica.setPropView(rcvMessage.getView());
             System.out.println("Storing proposed view");
-        }
-        else {
+        } else {
             selectedReplica.setView(rcvMessage.getView());
             System.out.println("Storing view");
         }
         System.out.println("Syncing completed");
+        rep.put(rcvMessage.getSenderId(),selectedReplica);
+
+
     }
-
-
-
-
-    //Utilities*******************************************************************************************************************
-
     /* finds the highest tag in tagViewMap map */
     private Tag findMaxTagFromSet(Map<Tag, View> map) {
 
@@ -743,7 +767,6 @@ public class ConnectionManager {
 
     }
 
-    //Da usare? non credo
     void removeChannelFromList(SocketChannel toRemove){
 
         if (connectedServerChannels.contains(toRemove))

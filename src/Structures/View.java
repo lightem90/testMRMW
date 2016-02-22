@@ -7,9 +7,11 @@ import java.util.Iterator;
 import java.util.Set;
 
 
+
 /* Used to store the information about the nodes this node considers online, the information is encode both in a string (by separating ids) and in an arraylist to retrieve them faster */
 public class View {
 
+	private static final int PORT_THRESHOLD = 1000; // limit to recognize a port number
 	private static final String ID_SEPARATOR = "/";
 
 	public enum Label {
@@ -73,8 +75,14 @@ public class View {
 		for (i = 0;i <tokens.length-1; i++)
 			idArray.add(Integer.parseInt(tokens[i]));
 
-		//Sets the status according to the last int element of the array (should be 0-1-2-3)
-		status = Node.Status.values()[(Integer.parseInt(tokens[i]))];
+		//Sets the status according to the last int element of the array (should be 0-1-2-3), if it's not an identifier it's another node id
+		if (Integer.parseInt(tokens[i]) <PORT_THRESHOLD)
+			status = Node.Status.values()[(Integer.parseInt(tokens[i]))];
+		else {
+			idArray.add(Integer.parseInt(tokens[i]));
+			status = Node.Status.NONE;
+			idArray.add(status.GetValue());
+		}
 
 	}
 
@@ -96,6 +104,18 @@ public class View {
 
 
 		}
+
+	}
+
+	public boolean isEmpty()
+	{
+		if (this == null)
+			return true;
+		if (value.isEmpty())
+			return true;
+		if (idArray.isEmpty())
+			return true;
+		return false;
 
 	}
 
