@@ -66,7 +66,7 @@ public class electMasterService {
         System.out.println("There are: " + mSet.getNumberOfNodes() + " nodes");
         seemCrd = new ArrayList<>(mSet.getNumberOfNodes());
         Set<Integer> idList = failureDetector.keySet();
-        int masterId =INVALID;
+        int masterId = INVALID;
         System.out.println("Failure detector says these nodes are active: " + idList.toString());
 
         for (Integer l : idList) {
@@ -75,7 +75,7 @@ public class electMasterService {
             //Getting all the information about active node l (Last message with proper view received)
             if (rep.containsKey(l) && l != mSet.getNodeId()) {
                 MachineStateReplica nodeReplicatedState = rep.get(l);
-                View nodeReplicatedPropView = nodeReplicatedState.getView();
+                View nodeReplicatedPropView = nodeReplicatedState.getPropView();
                 nodeReplicatedPropView.setArrayFromValueString();
 
                 System.out.println("Contained with view: " + nodeReplicatedPropView.getValue());

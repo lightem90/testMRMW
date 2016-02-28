@@ -105,6 +105,7 @@ public class FailureDetector {
         System.out.println("View if FD: " + set.toString());
         View updView = new View (set);
         System.out.println("Nodes seen by FD after update: " + updView.getValue());
+        updView.setStatus(current.getStatus());
         current.setProposedView(updView);
 
     }

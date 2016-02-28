@@ -61,6 +61,7 @@ public class View {
 
 		label = Label.FIN;
 		status = Node.Status.NONE;
+		sb.append(Node.Status.NONE.GetValue());
 		value = sb.toString();
 
 	}
@@ -68,20 +69,29 @@ public class View {
 	/* Next two methods are used to set the string or the array when we acquire the view by array or string, in this way in the future we can refer to a view with both data structures */
 	public void setArrayFromValueString(){
 
-		String[] tokens = value.split(ID_SEPARATOR);
-		idArray = new ArrayList<>();
+		if (!(value == null) && !(value.isEmpty())) {
 
-		int i;
-		for (i = 0;i <tokens.length-1; i++)
-			idArray.add(Integer.parseInt(tokens[i]));
+			String[] tokens = value.split(ID_SEPARATOR);
+			idArray = new ArrayList<>();
 
-		//Sets the status according to the last int element of the array (should be 0-1-2-3), if it's not an identifier it's another node id
-		if (Integer.parseInt(tokens[i]) <PORT_THRESHOLD)
-			status = Node.Status.values()[(Integer.parseInt(tokens[i]))];
-		else {
-			idArray.add(Integer.parseInt(tokens[i]));
-			status = Node.Status.NONE;
-			idArray.add(status.GetValue());
+			int statusFromString = -1;
+
+			for (int i = 0; i < tokens.length - 1; i++) {
+				int element = Integer.parseInt(tokens[i]);
+				if (element > PORT_THRESHOLD)
+					idArray.add(element);
+				else
+					statusFromString = element;
+			}
+
+			//Sets the status according to the last int element of the array (should be 0-1-2-3), if it's not an identifier it's another node id
+			if (statusFromString != -1) {
+				idArray.add(statusFromString);
+				status = Node.Status.valueOf(String.valueOf(statusFromString));
+			} else {
+				status = Node.Status.NONE;
+				idArray.add(status.GetValue());
+			}
 		}
 
 	}
@@ -101,24 +111,9 @@ public class View {
 			sb.append(status.GetValue());
 			sb.append(ID_SEPARATOR);
 			value = sb.toString();
-
-
 		}
 
 	}
-
-	public boolean isEmpty()
-	{
-		if (this == null)
-			return true;
-		if (value.isEmpty())
-			return true;
-		if (idArray.isEmpty())
-			return true;
-		return false;
-
-	}
-
 
 	/* Getters and Setters */
 	public String getValue() {
@@ -150,6 +145,34 @@ public class View {
 	}
 
 	public void setStatus(Node.Status status) {
+
+		if (status == null)
+			return;
+		//replace the old array with an updated one with the correct status
+		for (int i = 0; i<idArray.size();i++)
+		{
+			if (idArray.get(i) < PORT_THRESHOLD)
+				idArray.set(i,status.GetValue());
+		}
+		//Replace the old string with the new string with same id but new status
+		StringBuilder sb = new StringBuilder();
+		String[] tokens = value.split(ID_SEPARATOR);
+
+		boolean statusWasPresent = false;
+		for (int i = 0; i<tokens.length;i++)
+		{
+			if (Integer.parseInt(tokens[i]) < PORT_THRESHOLD) {
+				sb.append(status.GetValue());
+				statusWasPresent = true;
+			}
+			else
+				sb.append(tokens[i]);
+			sb.append(ID_SEPARATOR);
+		}
+		if (!statusWasPresent)
+			sb.append(Node.Status.NONE.GetValue());
+
+		value = sb.toString();
 		this.status = status;
 	}
 }

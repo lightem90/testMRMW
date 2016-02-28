@@ -71,6 +71,7 @@ public class Node {
         }
         settings.setNumberOfNodes(ids.size());
         settings.setQuorum((ids.size()/2)+1);
+        status = Status.NONE;
         FD = new FailureDetector(ids,this);
 
         System.out.println("Setting up node in system with: " + settings.getNumberOfNodes() + " nodes, " + settings.getQuorum() + " quorum");
@@ -104,6 +105,15 @@ public class Node {
 
     public void setFD(FailureDetector FD) {
         this.FD = FD;
+    }
+
+
+    public Status getStatus() {
+        return status;
+    }
+
+    public void setStatus(Status status) {
+        this.status = status;
     }
 
 
