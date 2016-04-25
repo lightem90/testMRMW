@@ -11,7 +11,7 @@ import java.util.Set;
 /* Used to store the information about the nodes this node considers online, the information is encode both in a string (by separating ids) and in an arraylist to retrieve them faster */
 public class View {
 
-	private static final int PORT_THRESHOLD = 1000; // limit to recognize a port number
+	private static final int PORT_THRESHOLD = 1000; // limit to recognize a port number NOT VALID FOR EMULAB!
 	private static final String ID_SEPARATOR = "/";
 
 	public enum Label {
@@ -67,6 +67,7 @@ public class View {
 	}
 
 	/* Next two methods are used to set the string or the array when we acquire the view by array or string, in this way in the future we can refer to a view with both data structures */
+	//REMEMBER TO SET NODE ID > 1000
 	public void setArrayFromValueString(){
 
 		if (!(value == null) && !(value.isEmpty())) {
@@ -78,10 +79,12 @@ public class View {
 
 			for (int i = 0; i < tokens.length - 1; i++) {
 				int element = Integer.parseInt(tokens[i]);
-				if (element > PORT_THRESHOLD)
+				if (element > PORT_THRESHOLD) {
 					idArray.add(element);
-				else
+				}
+				else {
 					statusFromString = element;
+				}
 			}
 
 			//Sets the status according to the last int element of the array (should be 0-1-2-3), if it's not an identifier it's another node id

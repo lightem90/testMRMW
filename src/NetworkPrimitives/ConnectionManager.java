@@ -26,9 +26,10 @@ public class ConnectionManager {
     public final static String ACK_SEPARATOR = "_";
 
     /* Class constants */
-    private final static String ADDRESS_PATH = "address.txt";
+    private final static String LOC_ADDRESS_PATH = "address.txt";
     private final static int PORT = 3000;
     private final static int INVALID = -1;
+    private final static int MAX_OP_TURN = 10;
 
 
     /* Class buffer */
@@ -58,6 +59,10 @@ public class ConnectionManager {
     private Node.State state;
     private int rnd;
 
+    private int writecounter;
+    private long startTimer;
+    private static final boolean isEmulab = true;
+
     // Initialization
     public ConnectionManager(Node c){
 
@@ -66,6 +71,7 @@ public class ConnectionManager {
         rep = new HashMap<>(c.getSettings().getNumberOfNodes());
         ED = new EncDec();
         n = c;
+        startTimer = -1;
 
         //initializing tagViewMap with first tag and current view (nobody active), the view will change as soon as we receive messages from other nodes
         tagViewMap.put(n.getLocalTag(), n.getLocalView());
@@ -85,11 +91,12 @@ public class ConnectionManager {
         Selector socketSelector = null;
 
 
+        //To make things easier the id i passed from command line in case of emulab and the listening port is the 3000 for every node (and not the id)
         ArrayList<Integer> ids = new ArrayList<>();
 
         try {
             // read addresses from file
-            Path filePath = Paths.get(ADDRESS_PATH);
+            Path filePath = Paths.get(LOC_ADDRESS_PATH);
             List<String> lines = Files.readAllLines(filePath);
 
             if (!readAddressesFromFile(lines,ids)) {
@@ -167,11 +174,11 @@ public class ConnectionManager {
             try {
                 // listening for connections, initializes the selector with all socket ready for I/O operations
                 selector.select();
-
+                int counter = 0;
                 Iterator<SelectionKey> selectedKeys = selector.selectedKeys()
                         .iterator();
-                while (selectedKeys.hasNext()) {
-
+                while (selectedKeys.hasNext() && counter < MAX_OP_TURN) {
+                    counter++;
                     // for each element in the selector iterator
                     SelectionKey key = selectedKeys.next();
                     selectedKeys.remove();
@@ -184,6 +191,11 @@ public class ConnectionManager {
                         accept(key);
                         /* If the key is readable I have to handle the input properly, depending if there are pending operations or I'm just listening and answering to requests */
                     } else if (key.isReadable()) {
+
+                        if (connectedServerChannels.size() < n.getSettings().getQuorum()-1)
+                        {
+                            return;
+                        }
 
                         String[] tokens = readMessages(key);
                         System.out.println("Received " + tokens.length + " message/s");
@@ -226,6 +238,16 @@ public class ConnectionManager {
                                             System.out.println("I'm done " + state + ", now I'm " + nextState);
                                             state = nextState;
                                         }
+                                        if (nextState == Node.State.ANSWERING)
+                                        {
+
+                                            System.out.println("This write completed in: " + (System.currentTimeMillis()-startTimer)/1000F);
+                                            startTimer = 0;
+                                            writecounter++;
+                                            System.out.println("Writes completed: " + writecounter);
+                                            write(n.getLocalView());
+                                        }
+
                                         break;
 
                                     case READING:
@@ -238,7 +260,7 @@ public class ConnectionManager {
                                         break;
 
                                     case ANSWERING:
-                                        //Receive an ack of an old request, do nothing
+                                        System.out.println("Old request");
                                         break;
 
                                     default:
@@ -263,15 +285,19 @@ public class ConnectionManager {
                         finishConnection(key);
 
                     else if (key.isWritable()){
-                        /*
-                        System.out.println("print this is the key is writable (OP_WRITE set)");
-                        write(new View("testView"));
-                        */
+
+                        if (connectedServerChannels.size() < n.getSettings().getQuorum()-1)
+                        {
+                            return;
+                        }
+
+                        System.out.println("Writable channel: " + key.channel().toString());
+
                         }
                     }
 
             } catch (Exception e) {
-                System.out.println("Server crashed in loop");
+                System.out.println("Selector exception");
                 e.printStackTrace();
             }
 
@@ -300,11 +326,11 @@ public class ConnectionManager {
                     //In the case I receive a pre-write message, if the tag is the highest I know i set the new view as .PRE, otherwise I send an invalid ack
                     Tag newTag = receivedMessage.getTag();
 
-                    System.out.println("Max tag is: " + maxTag.getEpoch().getEpoch() + " and id: "+ maxTag.getCounters().getFirst().getId() +
-                            "-" + maxTag.getEpoch().getId() + " and counter: " + maxTag.getCounters().getFirst().getCounter());
+                    //System.out.println("Max tag is: " + maxTag.getEpoch().getEpoch() + " and id: "+ maxTag.getCounters().getFirst().getId() +
+                    //       "-" + maxTag.getEpoch().getId() + " and counter: " + maxTag.getCounters().getFirst().getCounter());
 
-                    System.out.println("Max tag is: " + newTag.getEpoch().getEpoch() + " and id: "+ newTag.getCounters().getFirst().getId() +
-                            "-" + newTag.getEpoch().getId() + " and counter: " + newTag.getCounters().getFirst().getCounter());
+                    //System.out.println("Max tag is: " + newTag.getEpoch().getEpoch() + " and id: "+ newTag.getCounters().getFirst().getId() +
+                    //        "-" + newTag.getEpoch().getId() + " and counter: " + newTag.getCounters().getFirst().getCounter());
                     if (maxTag.compareTo(newTag) >= 0) {
                         System.out.println("Received tag smaller than local max tag");
                         sendMessage(channel, new Message(receivedMessage.getRequestType()+ACK_SEPARATOR+"ack", new Tag(new Epoch(INVALID,INVALID),INVALID), new View (""), n.getSettings().getNodeId(),n.getFD().getLeader_id()));
@@ -439,7 +465,7 @@ public class ConnectionManager {
 
                     connectedServerChannels.add(socketChannel);
                     //Removing it from the list of not connected nodes
-                    nodesToConnect.remove(socketChannel.getRemoteAddress());
+                    //nodesToConnect.remove(socketChannel.getRemoteAddress());
                     //update view as soon as I see an active connection
 
                     socketChannel.register(selector, SelectionKey.OP_READ);
@@ -498,36 +524,71 @@ public class ConnectionManager {
 
     }
 
-    /* Reads the nodes address and id from file in the form -> 127.0.0.1:5000 TODO: CHANGE THIS METHOD IF THE FILE CHANGES */
+    /* Reads the nodes address and id from file in the form -> 127.0.0.1:5000 NB: CHANGE THIS METHOD IF THE FILE CHANGES */
+    /* EMULAB IS DIFFERENT, the files contains just the address */
     private boolean readAddressesFromFile(List<String> linesToParse, ArrayList<Integer> idNodesArray){
 
         // for each line if it's not my port I'll add the address to the array of addresses
+        if (isEmulab)
+            System.out.println("Reading Emulab file");
+        else
+            System.out.println("Reading local file");
+
         for (int i = 0; i < linesToParse.size(); i++) {
 
-            //EMULAB strings are being removed since we won't use it anymore
-            String line = linesToParse.get(i);
-            System.out.println(line);
-            //position 0 address, 1 port/id
-            String[] tokens = line.split(":");
+            if (!isEmulab) {
+                String line = linesToParse.get(i);
+                System.out.println(line);
+                //position 0 address, 1 port/id
+                String[] tokens = line.split(":");
 
-            //filling an array with all the ids to pass it to FD and a map with id-address that may be useful later on
-            idNodesArray.add(Integer.parseInt(tokens[1]));
-            allNodesAddress.put(Integer.parseInt(tokens[1]), new InetSocketAddress(tokens[0], Integer.parseInt(tokens[1])));
-            //allNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1]))); //local
+                //filling an array with all the ids to pass it to FD and a map with id-address that may be useful later on
+                idNodesArray.add(Integer.parseInt(tokens[1]));
+                allNodesAddress.put(Integer.parseInt(tokens[1]), new InetSocketAddress(tokens[0], Integer.parseInt(tokens[1])));
+                //allNodesAddress.put(Integer.parseInt(tokens[0]), new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1]))); //local
 
-            //String[] portTokens = tokens[1].split(":"); //local
-            //ignoring smaller ids, they will connect to my address and will do accept on them
-            if (Integer.parseInt(tokens[1]) < n.getSettings().getNodeId())
-                continue;
+                //String[] portTokens = tokens[1].split(":"); //local
+                //ignoring smaller ids, they will connect to my address and will do accept on them
+                if (Integer.parseInt(tokens[1]) < n.getSettings().getNodeId())
+                    continue;
 
-            //this is me
-            if (Integer.parseInt(tokens[1]) == n.getSettings().getNodeId())
-                hostAddress = new InetSocketAddress(tokens[0],n.getSettings().getNodeId());
-                //hostAddress = new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
-            else {
-                //id is bigger than my id, so I have to register as waiting to connect to them
-                nodesToConnect.add(new InetSocketAddress(tokens[0],Integer.parseInt(tokens[1])));
-                //nodesToConnect.add(new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
+                //this is me
+                if (Integer.parseInt(tokens[1]) == n.getSettings().getNodeId())
+                    hostAddress = new InetSocketAddress(tokens[0], n.getSettings().getNodeId());
+                    //hostAddress = new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
+                else {
+                    //id is bigger than my id, so I have to register as waiting to connect to them
+                    nodesToConnect.add(new InetSocketAddress(tokens[0], Integer.parseInt(tokens[1])));
+                    //nodesToConnect.add(new InetSocketAddress(portTokens[0],Integer.parseInt(portTokens[1])); //local
+                }
+            }
+            else
+            {
+                /************** I DECIDED NOT TO USE PORT AS ID, SO THE PROGRAM WOULD IN GENERAL JUST NEED PORT 3000 FOR IT TO WORK  **/
+
+                //format emulab[id address]
+                //EMULAB ADDRESS 10.1.1.2 last digit (2) is the id of the node +1 => node with id 1 goes to 10.1.1.2, node with id 2 goes to 10.1.1.3 and so on
+                String line = linesToParse.get(i);
+                System.out.println(line);
+
+                String[] numTokens = line.split(" ");
+
+                //id is the first element
+                int id = Integer.parseInt(numTokens[0]);
+                idNodesArray.add(id);
+
+                //address is the second element
+                allNodesAddress.put(id, new InetSocketAddress(numTokens[1], PORT));
+
+                //I connect to id with higher value
+                if (id < n.getSettings().getNodeId())
+                    continue;
+
+                if (id == n.getSettings().getNodeId())
+                    hostAddress = new InetSocketAddress(numTokens[1],PORT);
+                else
+                    nodesToConnect.add(new InetSocketAddress(numTokens[1], PORT));      //address of a node with higher id, if it was smaller it would have continued earlier
+
             }
         }
         return true;
@@ -540,13 +601,16 @@ public class ConnectionManager {
 
     public void startElectionRoutine(){
 
-        System.out.println("Last delivered message map contains: " + lastDeliveredMessageMap.keySet().toString());
+        System.out.println("Election routine");
+        //System.out.println("Last delivered message map contains: " + lastDeliveredMessageMap.keySet().toString());
+        double startTime = System.currentTimeMillis();
         electMasterService election = new electMasterService(n);
         int leader = election.electMaster();
         n.getFD().setLeader_id(leader);
 
             if (leader == INVALID){
                 System.out.println("No suitable leader, querying...");
+                System.out.println("Leader election failed in: " + (System.currentTimeMillis()-startTime)/1000 + " seconds");
                 read();
                 return;
 
@@ -555,15 +619,21 @@ public class ConnectionManager {
             if (leader == n.getSettings().getNodeId()) {
                 n.setIsMaster(true);
                 n.setLocalView(n.getProposedView());
+                writecounter = 0;
                 write(n.getProposedView());
+
+                System.out.println("Leader election completed in: " + (System.currentTimeMillis() - startTime) / 1000 + " seconds");
+
             }
 
     }
     //Writes a view
     public void write(View view){
 
+        startTimer = System.currentTimeMillis();
         //nothing to do here..
         System.out.println("Writing: " + view.getValue());
+        writecounter++;
         comm.write(view);
 
     }
@@ -601,11 +671,12 @@ public class ConnectionManager {
     {
         //-1 because I consider this node too
         if (connectedServerChannels.size() >= n.getSettings().getQuorum()-1)
-            if (n.getFD().getLeader_id() < 0)
+        {
+            if (n.getFD().getLeader_id() < 0 || n.getFD().getLeader_id() == INVALID)
                 if (state != Node.State.READING &&
                         state != Node.State.WRITING)
                     startElectionRoutine();
-
+        }
     }
 
 
@@ -615,6 +686,16 @@ public class ConnectionManager {
 
 
     private void UpdateReplica(MachineStateReplica selectedReplica, Message rcvMessage, boolean isProposedView){
+
+        if (selectedReplica.getLastMessage() != null) {
+            //if two message have the same tag they might be from a read, so I should update as well
+            if (rcvMessage.getTag().compareTo(selectedReplica.getLastMessage().getTag()) < 0) {
+                if (selectedReplica.getLastMessage() != null) {
+                    //System.out.println("Received message has tag " + rcvMessage.getTag().toString() + " it is smaller than last received tag: " + selectedReplica.getLastMessage().getTag().toString());
+                    return;
+                }
+            }
+        }
 
         Message lastMulticastMsg = selectedReplica.getInput();
 
@@ -718,6 +799,7 @@ public class ConnectionManager {
 
         }  catch (IOException e) {
             try {
+                System.out.println("Cannot send message to address: "+ remoteAdd +"..Closing channel");
                 s.close();
             } catch (IOException e1) {
                 System.out.println("Cannot close channel in failed write");
@@ -733,6 +815,14 @@ public class ConnectionManager {
     }
     /* Reads all the message in the buffer, if an exception is thrown it proceed to re-register the key or just exits */
     private String[] readMessages(SelectionKey key) {
+
+        /*
+        try {
+          Thread.sleep(1000);                 //1000 milliseconds is one second.
+        } catch(InterruptedException ex) {
+          Thread.currentThread().interrupt();
+        }
+        */
 
         String message = "";
         SocketAddress remote = null;
@@ -760,6 +850,7 @@ public class ConnectionManager {
             System.out.println("Server or reader/writer crashed in read");
             reRegisterKey(remote);
             connectedServerChannels.remove(key.channel());
+            System.out.println(key.channel().toString() + " removed");
             comm.setChan(connectedServerChannels);
         }
 

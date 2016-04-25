@@ -259,6 +259,8 @@ public class Communicate {
 
 						System.out.println("Received expected message: " + req);
 						turnsValid.put(rcv.getSenderId(), rcv);
+						//updates informatiosn about this node
+						n.getCm().syncReplica(rcv,false);
 						//If the quorum is reached step to next phase and clear turnsValid
 						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
 
@@ -288,6 +290,8 @@ public class Communicate {
 
 						System.out.println("Received expected message: " + req);
 						turnsValid.put(rcv.getSenderId(), rcv);
+						//updates informatiosn about this node
+						n.getCm().syncReplica(rcv,true);
 						//If the quorum is reached I'm done reading
 						if (turnsValid.size() >= n.getSettings().getQuorum() - 1) {
 
@@ -329,7 +333,7 @@ public class Communicate {
 	private void sendToEveryone(Message m, boolean newOperation){
 
 
-		UpdateAndCheckRndForPCE(m,newOperation);
+		//UpdateAndCheckRndForPCE(m,newOperation);
 
 		System.out.println("Sending '" + m.getRequestType() + "' to everyone");
 		for (int i = 0; i < chan.size(); i++) {
@@ -403,7 +407,7 @@ public class Communicate {
 				if (c_phase == Phase.QUERY) {
 					System.out.println("Phase " + c_phase + " completed. Next phase->" +c_phaseNext);
 					c_phase = c_phaseNext;
-					c_phaseNext = Phase.FINALIZE;
+					c_phaseNext = Phase.ANSWERING;
 				}
 				//The successive phase and state of finalize in reading is answering again, meaning I'm done with the reading procedure after a gossip message
 				else if (c_phase == Phase.FINALIZE) {
@@ -533,7 +537,7 @@ public class Communicate {
 		for (SocketChannel c : channels) {
 			if (!this.chan.contains(c)) {
 				this.chan.add(c);
-				System.out.print("Adding ");
+				System.out.print("Adding channel" + c.toString());
 				printRemoteAddressFromChannel(c);
 			}
 
@@ -541,7 +545,7 @@ public class Communicate {
 		//deleting channel if wrong
 		for (SocketChannel c : this.chan){
 			if (!channels.contains(c)) {
-				System.out.print("Removing ");
+				System.out.print("Removing channel" + c.toString());
 				this.chan.remove(c);
 			}
 		}

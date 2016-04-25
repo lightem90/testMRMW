@@ -45,6 +45,7 @@ public class Node {
     private boolean isMaster;
 
 
+
     /* Constructor with custom settings */
     public Node(Settings settings) {
 

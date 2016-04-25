@@ -52,12 +52,20 @@ public class electMasterService {
         //Now it checks if there's a quorum of noCrd or a quorum of nodes with a leader already elected
         int currentSystemLeader = leaderAlreadyElected();
         if (currentSystemLeader > 0)
+        {
+            System.out.println("There's already a leader");
             return currentSystemLeader;
+        }
+
         //the noCrd quorum case it handled later
+
+        for (int id : rep.keySet())
+            System.out.println("Nodes in replica: " + id + " quorum is: " + mSet.getQuorum());
 
         //Not enough informations to do leader election
         if (rep.size() < mSet.getQuorum()-1) {
 
+            System.out.println("Not enough information to do leader election");
             currentNode.getFD().setLeader_id(INVALID);
             return INVALID;
         }
@@ -67,10 +75,10 @@ public class electMasterService {
         seemCrd = new ArrayList<>(mSet.getNumberOfNodes());
         Set<Integer> idList = failureDetector.keySet();
         int masterId = INVALID;
-        System.out.println("Failure detector says these nodes are active: " + idList.toString());
+        //System.out.println("Failure detector says these nodes are active: " + idList.toString());
 
         for (Integer l : idList) {
-            System.out.println("Node# " + l);
+            //System.out.println("Node# " + l);
 
             //Getting all the information about active node l (Last message with proper view received)
             if (rep.containsKey(l) && l != mSet.getNodeId()) {
@@ -78,7 +86,7 @@ public class electMasterService {
                 View nodeReplicatedPropView = nodeReplicatedState.getPropView();
                 nodeReplicatedPropView.setArrayFromValueString();
 
-                System.out.println("Contained with view: " + nodeReplicatedPropView.getValue());
+                //System.out.println("Contained with view: " + nodeReplicatedPropView.getValue());
 
                 //isContained checks if l has a quorum for his view and if he is contained in each view of the nodes of his view
                 if ((nodeReplicatedPropView.getIdArray().size() >= mSet.getQuorum()) && isContained(nodeReplicatedPropView, l))
@@ -136,6 +144,7 @@ public class electMasterService {
 //Conditions at line 248
     private boolean canPropose(int mID){
 
+        System.out.println("CanPropose");
         if ((view.getIdArray().size() >= mSet.getQuorum() && mID == INVALID &&  enoughReplicaWithNoCrd())
                 || (mID == mSet.getNodeId() && !(FD.getValue().equals(propView.getValue()))
                     && enoughReplicaWithThisPropView()))
@@ -147,6 +156,8 @@ public class electMasterService {
 
 //Part of these steps are in other parts of the code
     private void leaderSideOperations() {
+
+        System.out.println("leaderSideOperations");
 /*
         //LEADER SIDE
         IF(status = Multicast)                                                                      //If status is multicast AND I'M THE LEADER (pi)
@@ -175,6 +186,7 @@ public class electMasterService {
 
     private void followerSideOperations() {
 
+        System.out.println("followerSideOperations");
 /*
         //FOLLOWER SIDE
         IF ( rep[l].status = Multicast)                                                         //if leader is multicasting
@@ -206,7 +218,7 @@ public class electMasterService {
 
         if (rep.isEmpty())
             return  false;
-        System.out.println("Is: " + id + " contained in:" + mView.getValue());
+        //System.out.println("Is: " + id + " contained in:" + mView.getValue());
         //mView.setArrayFromValueString();
         // Return if the proposed view doesn't contain myself
         if (!mView.getIdArray().contains(mSet.getNodeId()))
@@ -216,7 +228,7 @@ public class electMasterService {
 
             if (rep.containsKey(i)) {
                 MachineStateReplica nodeReplica = rep.get(i);
-                System.out.println("Node " + i + " view contains:" + nodeReplica.getPropView().getValue() + " must check for " + id + " presence");
+                //System.out.println("Node " + i + " view contains:" + nodeReplica.getPropView().getValue() + " must check for " + id + " presence");
                 View nodePropView = nodeReplica.getPropView();
                 nodePropView.setArrayFromValueString();
 
@@ -232,6 +244,7 @@ public class electMasterService {
 //Counts how many nodes of this view share this very same propView (FD)
     private boolean enoughReplicaWithThisPropView()
     {
+        System.out.println("enoughReplicaWithThisPropView");
         int counter = 0;
         for(int i : FD.getIdArray()){
 
@@ -249,6 +262,7 @@ public class electMasterService {
 //Counts how many replicas has noCrd set
     private boolean enoughReplicaWithNoCrd()
     {
+        System.out.println("enoughReplicaWithNoCrd");
         int counter = 0;
         for(int i : FD.getIdArray()){
 
@@ -264,6 +278,7 @@ public class electMasterService {
 //checks if every node in the view has the same rnd status and view as current node
     private boolean checkViewStatusRnd(){
 
+        System.out.println("checkViewStatusRnd");
         for (int i : view.getIdArray())
         {
             if (rep.containsKey(i))
@@ -282,6 +297,7 @@ public class electMasterService {
 //Checks if every node in the prop view is proposing
     private boolean everyOneIsProposing(){
 
+        System.out.println("everyOneIsProposing");
         int counter = 0;
         for(int i : propView.getIdArray()){
 
